@@ -1,0 +1,21 @@
+# Local activity and user configuration
+data/
+test-data/
+**/data/
+**/test-data/
+
+# Runtime and diagnostic files
+activity.json
+activity.json.bak
+games.json
+games.json.bak
+preferences.json
+preferences.json.bak
+runtime.json
+runtime.json.bak
+startup-error.log
+performance.json
+
+# PowerShell temporary files
+*.tmp
+*.bak

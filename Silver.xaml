@@ -1,0 +1,58 @@
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Afterhours · 游戏时间" Width="400" Height="660" WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize" Topmost="False" ShowActivated="False" ShowInTaskbar="False" WindowStartupLocation="Manual">
+ <Window.Resources>
+  <Style x:Key="GameMenuStyle" TargetType="ContextMenu">
+   <Setter Property="HasDropShadow" Value="False"/><Setter Property="Width" Value="272"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu"><Border CornerRadius="16" BorderThickness="2" Padding="7">
+    <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#80FFFFFF" Offset="0"/><GradientStop Color="#80E7E9E5" Offset="0.6"/><GradientStop Color="#80F0ECE7" Offset="1"/></LinearGradientBrush></Border.Background>
+    <Border.BorderBrush><SolidColorBrush Color="#E9F9FFFF"/></Border.BorderBrush>
+    <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True"><ItemsPresenter/></ScrollViewer>
+   </Border></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="GameMenuItemStyle" TargetType="MenuItem">
+   <Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="#303633"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Padding" Value="10,9"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem"><Border x:Name="ItemBox" CornerRadius="10" BorderThickness="1" BorderBrush="Transparent" Background="Transparent" Padding="{TemplateBinding Padding}" Margin="0,2">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions><TextBlock Text="{TemplateBinding Header}" Foreground="{TemplateBinding Foreground}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/><TextBlock x:Name="Mark" Grid.Column="1" Text="✓" Foreground="#527B9E" Visibility="Hidden" HorizontalAlignment="Right"/></Grid>
+   </Border><ControlTemplate.Triggers>
+    <Trigger Property="IsChecked" Value="True"><Setter TargetName="ItemBox" Property="Background" Value="#A3DCD4EF"/><Setter TargetName="ItemBox" Property="BorderBrush" Value="#A5F6FBFF"/><Setter TargetName="Mark" Property="Visibility" Value="Visible"/></Trigger>
+    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBox" Property="Background" Value="#D9EAF8FF"/><Setter TargetName="ItemBox" Property="BorderBrush" Value="#FFFFFFFF"/></Trigger>
+   </ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#303633"/><Setter Property="FontFamily" Value="Microsoft YaHei UI"/></Style>
+  <Style TargetType="ToolTip"><Setter Property="Background" Value="#F5FBFF"/><Setter Property="Foreground" Value="#303633"/><Setter Property="BorderBrush" Value="#8FC7DC"/><Setter Property="Padding" Value="10,7"/></Style>
+  <Style TargetType="Button"><Setter Property="FontSize" Value="13"/>
+   <Setter Property="Foreground" Value="#3E4742"/><Setter Property="Background" Value="#72FFFFFF"/><Setter Property="BorderBrush" Value="#A8FFFFFF"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="10,5"/><Setter Property="MinHeight" Value="30"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers>
+    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="#ECFFFFFF"/><Setter TargetName="Frame" Property="BorderBrush" Value="#FAFDFF"/></Trigger>
+    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="#4B91BC"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
+    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Frame" Property="Background" Value="#B0D8F1"/></Trigger>
+    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Frame" Property="Opacity" Value="0.35"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
+   </ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="GameRowStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="10,10"/><Setter Property="Margin" Value="0,0,0,7"/><Style.Triggers><Trigger Property="Tag" Value="selected"><Setter Property="BorderBrush" Value="#83978B"/><Setter Property="Background" Value="#B8E4E7E2"/></Trigger></Style.Triggers></Style>
+ </Window.Resources>
+ <Border x:Name="RootGlass" CornerRadius="24" BorderThickness="1" Padding="20,16">
+  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#80FFFFFF" Offset="0"/><GradientStop Color="#80E7E9E5" Offset="0.55"/><GradientStop Color="#80F0ECE7" Offset="1"/></LinearGradientBrush></Border.Background>
+  <Border.BorderBrush><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#FFFFFFFF" Offset="0"/><GradientStop Color="#B0B8CBD6" Offset="0.6"/><GradientStop Color="#FFFFFFFF" Offset="1"/></LinearGradientBrush></Border.BorderBrush>
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <StackPanel>
+    <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Grid x:Name="DragHandle" Background="Transparent" Cursor="SizeAll" ToolTip="拖动移动桌面看板"><TextBlock Text="AFTERHOURS" FontFamily="Segoe UI" FontSize="13" FontWeight="SemiBold" Foreground="#456C83" VerticalAlignment="Center"/></Grid>
+     <StackPanel Grid.Column="1" Orientation="Horizontal"><Button x:Name="SettingsButton" Content="设置" ToolTip="主题、深色模式和开机启动" Margin="0,0,5,0"/><Button x:Name="DemoToggle" Content="演示" ToolTip="切换示例历史；不会写入真实记录" Margin="0,0,5,0"/><Button x:Name="Play" Content="添加" ToolTip="添加需要统计的游戏" Margin="0,0,5,0"/><Button x:Name="Compact" Content="−" Width="30" Padding="0" ToolTip="折叠为小窗" Margin="0,0,5,0"/><Button x:Name="CloseButton" Content="×" Width="30" Padding="0" ToolTip="保存并退出；退出后停止记录"/></StackPanel>
+    </Grid>
+    <StackPanel x:Name="FullPanel">
+     <Grid><TextBlock Text="今日前台时长" Foreground="#496C81" FontSize="13" ToolTip="只计算游戏窗口处于前台的时间，可能包含挂机"/><TextBlock x:Name="WeekTotal" Foreground="#496C81" FontSize="13" HorizontalAlignment="Right"/></Grid>
+     <Grid Margin="0,0,0,16"><TextBlock x:Name="Total" Text="0s" FontSize="42" FontFamily="Segoe UI" FontWeight="SemiBold"/><TextBlock x:Name="CurrentGame" FontSize="12" Foreground="#456C83" HorizontalAlignment="Right" VerticalAlignment="Bottom" MaxWidth="175" TextTrimming="CharacterEllipsis" Margin="0,0,0,9"/></Grid>
+     <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="活动" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center"/><StackPanel Grid.Column="1" Orientation="Horizontal"><Button x:Name="CalendarScope" Content="全部游戏 ▾" MaxWidth="220" FontSize="13" ToolTip="选择游戏，查看专属热力图"/><Button x:Name="ClearFilter" Content="重置" FontSize="12" Margin="5,0,0,0" Visibility="Collapsed" ToolTip="恢复全部游戏汇总"/></StackPanel></Grid>
+     <Border x:Name="HeatPanel" Background="#62FFFFFF" BorderBrush="#90FFFFFF" BorderThickness="1" CornerRadius="18" Padding="0,12">
+      <Grid HorizontalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="一" Height="28" FontSize="12" Foreground="#567B91"/><TextBlock Height="28"/><TextBlock Text="三" Height="28" FontSize="12" Foreground="#567B91"/><TextBlock Height="28"/><TextBlock Text="五" Height="28" FontSize="12" Foreground="#567B91"/><TextBlock Height="28"/><TextBlock Text="日" Height="28" FontSize="12" Foreground="#567B91"/></StackPanel><UniformGrid x:Name="Heatmap" Grid.Column="1" Rows="7" Columns="8" Width="224" Height="196"/></Grid>
+     </Border>
+     <Grid Margin="0,8,0,16"><StackPanel Orientation="Horizontal"><Button x:Name="PrevMonth" Content="‹" Width="28" Padding="0" ToolTip="查看前 8 周"/><TextBlock x:Name="MonthLabel" Foreground="#496C81" FontSize="12" Margin="8,0" VerticalAlignment="Center"/><Button x:Name="NextMonth" Content="›" Width="28" Padding="0" ToolTip="查看后 8 周"/></StackPanel><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" ToolTip="每日前台时长：0、少于1小时、1–2小时、2–4小时、4小时以上"><TextBlock Text="少" FontSize="12" Foreground="#567B91" Margin="0,0,4,0"/><Border Width="8" Height="8" CornerRadius="2" Background="#E3E7E4" Margin="2,0"/><Border Width="8" Height="8" CornerRadius="2" Background="#C9D5CE" Margin="2,0"/><Border Width="8" Height="8" CornerRadius="2" Background="#A8BCB0" Margin="2,0"/><Border Width="8" Height="8" CornerRadius="2" Background="#819C8C" Margin="2,0"/><Border Width="8" Height="8" CornerRadius="2" Background="#5E796A" Margin="2,0"/><TextBlock Text="多" FontSize="12" Foreground="#567B91" Margin="4,0,0,0"/></StackPanel></Grid>
+     <Grid Margin="0,0,0,9"><TextBlock Text="今日游戏" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="前台时长" FontSize="12" Foreground="#496C81" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
+     <ScrollViewer x:Name="GameScroll" Height="116" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="Ranking"/></ScrollViewer>
+     <TextBlock x:Name="Health" Visibility="Collapsed" Foreground="#9E4818" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+    </StackPanel>
+    <Grid x:Name="MiniPanel" Visibility="Collapsed"><TextBlock x:Name="MiniTime" Text="0s" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="今日前台" Foreground="#496C81" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
+   </StackPanel>
+  </ScrollViewer>
+ </Border>
+</Window>
