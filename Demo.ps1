@@ -15,3 +15,13 @@ function New-DemoHistory {
  }
  return $result
 }
+function New-DemoSessions($history){
+ $random=[Random]::new(917);$result=@()
+ foreach($record in @($history.Values|Sort-Object Date)){
+  $date=[datetime]$record.Date;$roll=$random.NextDouble()
+  $hour=if($roll -lt 0.62){$random.Next(19,23)}elseif($roll -lt 0.85){$random.Next(13,18)}else{$random.Next(9,13)}
+  $start=$date.AddHours($hour).AddMinutes($random.Next(0,50));$end=$start.AddSeconds($record.Foreground)
+  $result+=[pscustomobject]@{Name=$record.Name;Process=$record.Process;Start=$start.ToString('o');End=$end.ToString('o');Seconds=[double]$record.Foreground}
+ }
+ return $result
+}

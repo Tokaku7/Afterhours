@@ -13,23 +13,25 @@ public static class ActivityNative {
  }
 }
 '@
-function Get-SteamRules {
- $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).SteamPath
- if (-not $steam) { return }
+function Get-SteamRules([string]$SteamPathOverride='') {
+ $steam = if($SteamPathOverride){$SteamPathOverride}else{(Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).SteamPath}
+ if (-not $steam -or -not (Test-Path -LiteralPath $steam -PathType Container -ErrorAction SilentlyContinue)) { return }
  $libraries = @($steam)
- $libraryFile = Join-Path $steam 'steamapps\libraryfolders.vdf'
+ $libraryFile = try { Join-Path $steam 'steamapps\libraryfolders.vdf' } catch { $null }
  if (Test-Path -LiteralPath $libraryFile) {
   $content = Get-Content -LiteralPath $libraryFile -Raw
   foreach ($match in [regex]::Matches($content,'"path"\s+"([^"]+)"')) { $libraries += $match.Groups[1].Value.Replace('\\','\') }
  }
  foreach ($library in @($libraries | Select-Object -Unique)) {
-  foreach ($manifest in @(Get-ChildItem -LiteralPath (Join-Path $library 'steamapps') -Filter 'appmanifest_*.acf' -ErrorAction SilentlyContinue)) {
+  if(-not $library -or -not (Test-Path -LiteralPath $library -PathType Container -ErrorAction SilentlyContinue)){continue}
+  $appsPath=try{Join-Path $library 'steamapps'}catch{continue}
+  foreach ($manifest in @(Get-ChildItem -LiteralPath $appsPath -Filter 'appmanifest_*.acf' -ErrorAction SilentlyContinue)) {
    $content = Get-Content -LiteralPath $manifest.FullName -Raw -Encoding UTF8
    $appId = [regex]::Match($content,'"appid"\s+"([^"]+)"').Groups[1].Value
    $name = [regex]::Match($content,'"name"\s+"([^"]+)"').Groups[1].Value
    $dir = [regex]::Match($content,'"installdir"\s+"([^"]+)"').Groups[1].Value
    if ($appId -and $dir -and $appId -ne '228980') {
-    [pscustomobject]@{Name=$name; Process="steam-$appId"; Root=([IO.Path]::GetFullPath((Join-Path $library "steamapps\common\$dir"))).TrimEnd('\')+'\'}
+    try{$root=[IO.Path]::GetFullPath((Join-Path $library "steamapps\common\$dir"));if(Test-Path -LiteralPath $root -PathType Container){[pscustomobject]@{Name=$name; Process="steam-$appId"; Root=$root.TrimEnd('\')+'\'}}}catch{}
    }
   }
  }

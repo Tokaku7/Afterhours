@@ -16,6 +16,8 @@ public sealed class DesktopLayer {
  [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int ellipseWidth,int ellipseHeight);
  [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr obj);
  [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr h,IntPtr region,bool redraw);
+ [DllImport("user32.dll")] static extern bool ReleaseCapture();
+ [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h,int msg,IntPtr w,IntPtr l);
  [StructLayout(LayoutKind.Sequential)] struct RECT { public int left,top,right,bottom; }
  [StructLayout(LayoutKind.Sequential)] struct Accent { public int state, flags, color, animation; }
  [StructLayout(LayoutKind.Sequential)] struct CompositionData { public int attribute; public IntPtr data; public int size; }
@@ -30,14 +32,10 @@ public sealed class DesktopLayer {
   if (desktop != IntPtr.Zero) SetLong(handle, -8, desktop);
   SetLong(handle, -20, new IntPtr(GetLong(handle,-20).ToInt64() | 0x08000000L | 0x80L));
   source.AddHook(Hook);
-  Accent accent = new Accent {state=3,flags=0,color=unchecked((int)0x99F7F2EA)};
-  IntPtr memory=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Accent)));
-  try {
-   Marshal.StructureToPtr(accent,memory,false);
-   CompositionData data=new CompositionData {attribute=19,data=memory,size=Marshal.SizeOf(typeof(Accent))};
-   BlurEnabled=SetWindowCompositionAttribute(handle,ref data)!=0;
-  } catch (EntryPointNotFoundException) { BlurEnabled=false; }
-  finally {Marshal.FreeHGlobal(memory);}
+  // Applying ACCENT_ENABLE_BLURBEHIND to the main layered HWND paints a
+  // rectangular tint outside WPF's rounded Border on some Windows 11 builds.
+  // Keep the main HWND fully transparent and draw glass only inside RootGlass.
+  BlurEnabled=false;
   Lower();
   ApplyRoundedRegion();
  }
@@ -55,13 +53,14 @@ public sealed class DesktopLayer {
  public void ApplyRoundedRegion(){
   RECT rect;
   if(!GetClientRect(handle,out rect) || rect.right<=0 || rect.bottom<=0)return;
-  IntPtr region=CreateRoundRectRgn(0,0,rect.right+1,rect.bottom+1,40,40);
+  IntPtr region=CreateRoundRectRgn(0,0,rect.right+1,rect.bottom+1,48,48);
   if(region!=IntPtr.Zero && SetWindowRgn(handle,region,true)==0)DeleteObject(region);
  }
+ public void BeginResize(){ReleaseCapture();SendMessage(handle,0x00A1,new IntPtr(17),IntPtr.Zero);}
  public static void BlurPopup(IntPtr hwnd){
-  Accent accent=new Accent {state=3,flags=0,color=unchecked((int)0x99EEEFEF)};
-  IntPtr p=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Accent)));
-  try{Marshal.StructureToPtr(accent,p,false);CompositionData data=new CompositionData {attribute=19,data=p,size=Marshal.SizeOf(typeof(Accent))};SetWindowCompositionAttribute(hwnd,ref data);}catch(EntryPointNotFoundException){}finally{Marshal.FreeHGlobal(p);}
+  // Native blur colors the popup's full rectangular HWND on some Windows 11
+  // builds, leaving black corners around rounded menus and tooltips. Popup
+  // templates already draw their own translucent glass, so keep HWND clear.
  }
  IntPtr Hook(IntPtr hwnd, int msg, IntPtr w, IntPtr l, ref bool handled) {
   if (msg == 0x21) { handled=true; return new IntPtr(3); }
