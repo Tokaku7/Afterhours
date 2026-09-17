@@ -6,9 +6,7 @@
 
 从 1.0 升级或查看本次变化，请阅读 [`1.0-数据迁移教程.md`](1.0-数据迁移教程.md)、[`2.0.1-更新公告.md`](2.0.1-更新公告.md) 与 [`更新日志.md`](更新日志.md)。
 
-| 主界面 | 统计页面 |
-| --- | --- |
-| ![Afterhours 2.0.1 主界面](preview.png) | ![Afterhours 2.0.1 统计页面](stats-preview.png) |
+![Afterhours 2.0.1 烟粉主页与极地雾统计页](afterhours-2.0.1-preview.png)
 
 ## 功能
 
