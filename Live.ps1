@@ -92,6 +92,7 @@ function Apply-Theme {
   '极地雾'=@{Glass='#E8F2F8';Selected='#6B8FA7';Primary='#7FA6C1';Secondary='#B7CBD9';Tertiary='#D7E2EA';Text='#1F2933'}
   '极光薄荷'=@{Glass='#E6F5EE';Selected='#3F7F72';Primary='#6FB7A7';Secondary='#A7D4C5';Tertiary='#D9EFE6';Text='#1E2F2B'}
   '烟粉'=@{Glass='#F8EDEF';Selected='#B36B7A';Primary='#D58D9B';Secondary='#E6B7C1';Tertiary='#F4DDE2';Text='#3B2A2E'}
+  '暮光紫'=@{Glass='#F1ECF5';Selected='#796982';Primary='#9E8BA7';Secondary='#BDAFC2';Tertiary='#E8E4EA';Text='#302A34'}
  }
  if(-not $themes.ContainsKey($preferences.Theme)){$preferences.Theme='极光薄荷'}
  $theme=$themes[$preferences.Theme];$script:isDark=[bool]$preferences.Dark
@@ -413,7 +414,7 @@ $ui.ClearFilter.Add_Click({$script:selectedGame='';Render-State})
 function New-SettingsMenu {
  $menu=[Windows.Controls.ContextMenu]::new();$menu.Style=$window.FindResource('GameMenuStyle');$menu.Placement='Bottom';$menu.VerticalOffset=5
  $menu.Add_Loaded({param($sender,$eventArgs)$source=[Windows.Interop.HwndSource]::FromVisual($sender);if($source){[DesktopLayer]::BlurPopup($source.Handle)}})
- foreach($theme in @('极地雾','极光薄荷','烟粉')){
+ foreach($theme in @('极地雾','极光薄荷','烟粉','暮光紫')){
   $item=[Windows.Controls.MenuItem]::new();$item.Header='主题 · '+$theme;$item.Tag='theme|'+$theme;$item.IsCheckable=$true;$item.IsChecked=$preferences.Theme -eq $theme;$item.Style=$window.FindResource('GameMenuItemStyle')
   $item.Add_Click({param($sender,$eventArgs)$preferences.Theme=([string]$sender.Tag).Split('|')[1];Save-JsonAtomic $preferences $preferencesPath;Apply-Theme;Render-State});[void]$menu.Items.Add($item)
  }
@@ -535,10 +536,10 @@ if($Preview){
   if($script:month -ne $previous){throw 'Forward paging failed'}
   $savedTheme=$preferences.Theme;$savedDark=$preferences.Dark
   $settings=New-SettingsMenu
-  if($settings.Items.Count -ne 7){throw 'Settings menu item count failed'}
+  if($settings.Items.Count -ne 8){throw 'Settings menu item count failed'}
   $settings.Items[2].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.MenuItem]::ClickEvent))
   if($preferences.Theme -ne '烟粉'){throw 'Theme selection failed'}
-  $preferences.Dark=$false;$settings=New-SettingsMenu;$settings.Items[3].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.MenuItem]::ClickEvent))
+  $preferences.Dark=$false;$settings=New-SettingsMenu;$settings.Items[4].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.MenuItem]::ClickEvent))
   if(-not $preferences.Dark){throw 'Dark mode failed'}
   $preferences.Dark=$false;Apply-Theme;$ui.StatsButton.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));if($ui.StatsPanel.Visibility -ne 'Visible' -or -not $ui.StatsTotal.Text){throw 'Stats page failed'};$ui.StatsRange30.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));if($script:statsRange -ne 30){throw 'Stats 30-day range failed'};$ui.StatsRangeAll.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));if($script:statsRange -ne 0){throw 'Stats all range failed'};$ui.StatsRange7.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));if($script:statsRange -ne 7){throw 'Stats 7-day range failed'};$window.UpdateLayout();$statsBitmap=[Windows.Media.Imaging.RenderTargetBitmap]::new([int]$window.Width,[int]$window.Height,96,96,[Windows.Media.PixelFormats]::Pbgra32);$statsBitmap.Render($window);$statsEncoder=[Windows.Media.Imaging.PngBitmapEncoder]::new();$statsEncoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($statsBitmap));$statsStream=[IO.File]::Create((Join-Path $PSScriptRoot 'stats-preview.png'));$statsEncoder.Save($statsStream);$statsStream.Dispose();$ui.StatsBack.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
   $preferences.Dark=$true;Apply-Theme;Render-State;$window.UpdateLayout();[void]$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::Background)
@@ -553,7 +554,7 @@ if($Preview){
   [void][IO.Directory]::CreateDirectory($Screenshots)
   function Save-Shot([string]$name){$window.UpdateLayout();[void]$window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::Background);$shot=[Windows.Media.Imaging.RenderTargetBitmap]::new([int]$window.Width,[int]$window.Height,96,96,[Windows.Media.PixelFormats]::Pbgra32);$shot.Render($window);$enc=[Windows.Media.Imaging.PngBitmapEncoder]::new();$enc.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($shot));$fs=[IO.File]::Create((Join-Path $Screenshots ($name+'.png')));$enc.Save($fs);$fs.Dispose()}
   $savedTheme=$preferences.Theme;$savedDark=$preferences.Dark
-  foreach($shotTheme in @('极光薄荷','极地雾','烟粉')){foreach($shotDark in @($false,$true)){
+  foreach($shotTheme in @('极光薄荷','极地雾','烟粉','暮光紫')){foreach($shotDark in @($false,$true)){
    $preferences.Theme=$shotTheme;$preferences.Dark=$shotDark;Apply-Theme;$window.Height=$script:expandedHeight;Render-State
    $mode=if($shotDark){'dark'}else{'light'}
    Save-Shot ($shotTheme+'-'+$mode+'-home')

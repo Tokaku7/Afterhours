@@ -24,6 +24,6 @@ Afterhours 游戏时间看板 · 2.0.1
 
 当前是未签名的 PowerShell/WPF 脚本版，不是 EXE 安装程序。如果启动没有窗口，可在本目录打开终端运行下面命令查看错误：
 powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\Live.ps1
-外观设置保存在本机 data/preferences.json。极地雾、极光薄荷、烟粉三套主题会同步改变热力图、进度条、游戏标签和统计图表；也可以切换深色模式。
+外观设置保存在本机 data/preferences.json。极地雾、极光薄荷、烟粉、暮光紫四套主题会同步改变热力图、进度条、游戏标签和统计图表；也可以切换深色模式。
 
 如果启动失败，会弹出错误，并保存到 data/startup-error.log。把该文件发给开发者即可排查。
