@@ -65,6 +65,9 @@ $script:selectedGame=''
 $script:statsRange=7
 $script:desktop=$null
 $script:lastRenderSignature=''
+$script:userResized=$false
+$script:isCompact=$false
+$script:expandedSize=[pscustomobject]@{Width=$window.Width;Height=$window.Height}
 $startupRegistry='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $startupName='AfterhoursGameTime'
 $startupCommand='wscript.exe "'+(Join-Path $PSScriptRoot 'Afterhours启动.vbs')+'"'
@@ -456,10 +459,24 @@ $ui.StatsHours.Add_SizeChanged({param($sender,$eventArgs)if($ui.StatsPanel.Visib
 $ui.StatsRange7.Add_Click({$script:statsRange=7;Render-Stats})
 $ui.StatsRange30.Add_Click({$script:statsRange=30;Render-Stats})
 $ui.StatsRangeAll.Add_Click({$script:statsRange=0;Render-Stats})
-$ui.ResizeGrip.Add_MouseLeftButtonDown({$script:userResized=$true;if($script:desktop){$script:desktop.BeginResize()}})
+$ui.ResizeGrip.Add_MouseLeftButtonDown({
+ if($script:isCompact){return}
+ $script:userResized=$true
+ if($script:desktop){$script:desktop.BeginResize()}
+})
 $ui.Compact.Add_Click({
- if($ui.FullPanel.Visibility -eq 'Visible'){$ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Visible';$window.Height=160;$ui.Compact.Content='+'}
- else{$ui.FullPanel.Visibility='Visible';$ui.MiniPanel.Visibility='Collapsed';$window.Height=[math]::Min($script:expandedHeight,[Windows.SystemParameters]::WorkArea.Height-24);$ui.Compact.Content='−'}
+ if(-not $script:isCompact){
+  $script:expandedSize=[pscustomobject]@{Width=$window.ActualWidth;Height=$window.ActualHeight}
+  $script:isCompact=$true
+  $ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Visible';$ui.ResizeGrip.Visibility='Collapsed'
+  $window.MinHeight=160;$window.MaxHeight=160;$window.Height=160;$ui.Compact.Content='+';$ui.Compact.ToolTip='展开看板'
+ }else{
+  $script:isCompact=$false
+  $window.MaxHeight=860;$window.MinHeight=520
+  $window.Width=[math]::Max($window.MinWidth,[math]::Min($window.MaxWidth,[double]$script:expandedSize.Width))
+  $window.Height=[math]::Max($window.MinHeight,[math]::Min([math]::Min($window.MaxHeight,[Windows.SystemParameters]::WorkArea.Height-24),[double]$script:expandedSize.Height))
+  $ui.FullPanel.Visibility='Visible';$ui.MiniPanel.Visibility='Collapsed';$ui.ResizeGrip.Visibility='Visible';$ui.Compact.Content='−';$ui.Compact.ToolTip='折叠为小窗'
+ }
 })
 $ui.Play.Add_Click({Select-Game})
 $timer=[Windows.Threading.DispatcherTimer]::new(); $timer.Interval=[timespan]::FromSeconds(1)
@@ -478,10 +495,9 @@ $timer.Add_Tick({
 })
 $script:tray=$null
 if(-not $Preview){
- $script:tray=[Windows.Forms.NotifyIcon]::new();$iconPath=Join-Path $PSScriptRoot 'Afterhours.ico';if(Test-Path -LiteralPath $iconPath){$script:trayIcon=[Drawing.Icon]::new($iconPath);$script:tray.Icon=$script:trayIcon}else{$script:tray.Icon=[Drawing.SystemIcons]::Application};$script:tray.Text='Afterhours 2.0.1 · 游戏时间';$script:tray.Visible=$true
- $trayMenu=[Windows.Forms.ContextMenuStrip]::new();[void]$trayMenu.Items.Add('显示 / 隐藏看板');[void]$trayMenu.Items.Add('退出 Afterhours')
- $trayMenu.Items[0].Add_Click({if($window.Visibility -eq 'Visible'){$window.Hide()}else{$window.Show();$window.UpdateLayout();if($script:desktop){$script:desktop.Lower()}}})
- $trayMenu.Items[1].Add_Click({$window.Close()});$script:tray.ContextMenuStrip=$trayMenu;$script:tray.Add_DoubleClick({if($window.Visibility -ne 'Visible'){$window.Show()};if($script:desktop){$script:desktop.Lower()}})
+ $script:tray=[Windows.Forms.NotifyIcon]::new();$iconPath=Join-Path $PSScriptRoot 'Afterhours.ico';if(Test-Path -LiteralPath $iconPath){$script:trayIcon=[Drawing.Icon]::new($iconPath);$script:tray.Icon=$script:trayIcon}else{$script:tray.Icon=[Drawing.SystemIcons]::Application};$script:tray.Text='Afterhours 2.0.2 · 游戏时间';$script:tray.Visible=$true
+ $trayMenu=[Windows.Forms.ContextMenuStrip]::new();[void]$trayMenu.Items.Add('退出 Afterhours')
+ $trayMenu.Items[0].Add_Click({$window.Close()});$script:tray.ContextMenuStrip=$trayMenu
 }
 $window.Add_Closed({$timer.Stop();if($script:currentSession){$script:currentSession.End=[datetime]::Now.ToString('o')};Save-Activity;if($script:tray){$script:tray.Visible=$false;$script:tray.Dispose()};if($script:trayIcon){$script:trayIcon.Dispose()}})
 Apply-Theme
@@ -562,7 +578,13 @@ if($Preview){
    $ui.StatsBack.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
   }}
   $preferences.Theme='极光薄荷';$preferences.Dark=$false;Apply-Theme;Render-State
-  $ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));Save-Shot 'mini';$ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
+  if($window.ResizeMode -ne [Windows.ResizeMode]::CanResize){throw 'Window resize mode failed'}
+  $script:userResized=$true;$window.Width=420;$window.Height=640;$window.UpdateLayout()
+  $ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));$window.UpdateLayout()
+  if(-not $script:isCompact -or [math]::Abs($window.ActualHeight-160) -gt 1 -or $ui.MiniPanel.Visibility -ne 'Visible' -or $ui.ResizeGrip.Visibility -ne 'Collapsed'){throw 'Compact mode failed'}
+  Save-Shot 'mini'
+  $ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));$window.UpdateLayout()
+  if($script:isCompact -or [math]::Abs($window.ActualWidth-420) -gt 1 -or [math]::Abs($window.ActualHeight-640) -gt 1 -or $ui.ResizeGrip.Visibility -ne 'Visible'){throw 'Expanded size restore failed'}
   $preferences.Theme=$savedTheme;$preferences.Dark=$savedDark;Apply-Theme;Render-State
   Write-Output ('SHOTS_OK '+$Screenshots)
  }
