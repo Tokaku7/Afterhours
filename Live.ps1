@@ -53,7 +53,7 @@ $ui['GameScroll']=$window.FindName('GameScroll')
 $ui['SettingsButton']=$window.FindName('SettingsButton')
 $ui['RootGlass']=$window.FindName('RootGlass')
 $ui['HeatPanel']=$window.FindName('HeatPanel')
-'DragHandle','TopHeader','HeaderActions','Subtitle','Compact','CloseButton','FullPanel','MiniPanel','StatsPanel','StatsButton','StatsBack','StatsTotal','StatsGames','StatsTimeline','StatsPlayWindow','StatsRangeLabel','StatsRange7','StatsRange30','StatsRangeAll','StatsRangeBox','StatsHeaderActions','StatsShareHint','StatsDateSpan','StatsAverage','StatsDays','StatsHours','StatsHourHint','StatsTile1','StatsTile2','StatsTile3','StatsDonut','StatsShareCard','StatsTimelineCard','ResizeGrip','Heatmap','Play','Total','Session','MiniTime','Runtime','CurrentGame','DateRange','Ranking','WeekTotal','Health','GameCount','PrevMonth','NextMonth','MonthLabel','CalendarScope','ClearFilter','HeatLegend' | ForEach-Object { $ui[$_]=$window.FindName($_) }
+'MainScroll','MainContent','DragHandle','TopHeader','HeaderActions','Subtitle','Compact','CloseButton','FullPanel','MiniPanel','StatsPanel','StatsButton','StatsBack','StatsTotal','StatsGames','StatsTimeline','StatsPlayWindow','StatsRangeLabel','StatsRange7','StatsRange30','StatsRangeAll','StatsRangeBox','StatsHeaderActions','StatsShareHint','StatsDateSpan','StatsAverage','StatsDays','StatsHours','StatsHourHint','StatsTile1','StatsTile2','StatsTile3','StatsDonut','StatsShareCard','StatsTimelineCard','ResizeGrip','Heatmap','Play','Total','Session','MiniTime','Runtime','CurrentGame','DateRange','Ranking','WeekTotal','Health','GameCount','PrevMonth','NextMonth','MonthLabel','CalendarScope','ClearFilter','HeatLegend' | ForEach-Object { $ui[$_]=$window.FindName($_) }
 $window.Height=[math]::Min(610,[Windows.SystemParameters]::WorkArea.Height-24)
 $window.Left=[Windows.SystemParameters]::WorkArea.Right-$window.Width-20
 $window.Top=[Windows.SystemParameters]::WorkArea.Top+12
@@ -88,6 +88,19 @@ function Set-ThemeText($root){
  if($root -is [Windows.Controls.Button]){$root.Foreground=$script:themeText;$root.BorderBrush=$script:glassBorder;if($root.Name -in @('StatsBack','StatsButton','SettingsButton','Play','Compact','CloseButton','CalendarScope','ClearFilter','PrevMonth','NextMonth')){$root.Background=$script:buttonBackground}}
  $count=[Windows.Media.VisualTreeHelper]::GetChildrenCount($root)
  for($i=0;$i -lt $count;$i++){Set-ThemeText ([Windows.Media.VisualTreeHelper]::GetChild($root,$i))}
+}
+function Update-ContentScale {
+ if(-not $ui.MainContent -or -not $ui.MainScroll){return}
+ if($script:isCompact){
+  $ui.MainContent.LayoutTransform=[Windows.Media.ScaleTransform]::new(1,1)
+  $ui.MainContent.Width=[double]::NaN
+  return
+ }
+ $width=if($window.ActualWidth -gt 0){$window.ActualWidth}else{$window.Width}
+ $height=if($window.ActualHeight -gt 0){$window.ActualHeight}else{$window.Height}
+ $scale=[math]::Max(0.78,[math]::Min(1.40,[math]::Min($width/370.0,$height/610.0)))
+ $ui.MainContent.LayoutTransform=[Windows.Media.ScaleTransform]::new($scale,$scale)
+ if($ui.MainScroll.ActualWidth -gt 0){$ui.MainContent.Width=[math]::Max(300,$ui.MainScroll.ActualWidth/$scale)}
 }
 function Apply-Theme {
  # 主题色板：玻璃底色 / 选中控件 / 主图表色 / 次图表色 / 三级图表色 / 文字
@@ -456,6 +469,7 @@ $ui.CloseButton.Add_Click({$window.Close()})
 $ui.StatsButton.Add_Click({$script:preStatsHeight=$window.Height;$ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Collapsed';$ui.HeaderActions.Visibility='Collapsed';$ui.StatsHeaderActions.Visibility='Visible';$ui.TopHeader.Margin='0,0,0,18';$ui.StatsPanel.Visibility='Visible';if(-not $script:userResized){$window.Height=[math]::Min(750,[Windows.SystemParameters]::WorkArea.Height-24)};Render-Stats;if(-not $Preview){$ui.StatsPanel.BeginAnimation([Windows.UIElement]::OpacityProperty,[Windows.Media.Animation.DoubleAnimation]::new(0,1,[Windows.Duration]::new([timespan]::FromMilliseconds(220))))}})
 $ui.StatsBack.Add_Click({$ui.StatsPanel.Visibility='Collapsed';$ui.FullPanel.Visibility='Visible';$ui.HeaderActions.Visibility='Visible';$ui.StatsHeaderActions.Visibility='Collapsed';$ui.TopHeader.Margin='0,0,0,16';$ui.Compact.Visibility='Visible';if(-not $script:userResized -and $script:preStatsHeight){$window.Height=$script:preStatsHeight};Render-State})
 $ui.StatsHours.Add_SizeChanged({param($sender,$eventArgs)if($ui.StatsPanel.Visibility -eq 'Visible' -and $eventArgs.WidthChanged){Render-Stats}})
+$window.Add_SizeChanged({Update-ContentScale})
 $ui.StatsRange7.Add_Click({$script:statsRange=7;Render-Stats})
 $ui.StatsRange30.Add_Click({$script:statsRange=30;Render-Stats})
 $ui.StatsRangeAll.Add_Click({$script:statsRange=0;Render-Stats})
@@ -470,12 +484,14 @@ $ui.Compact.Add_Click({
   $script:isCompact=$true
   $ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Visible';$ui.ResizeGrip.Visibility='Collapsed'
   $window.MinHeight=160;$window.MaxHeight=160;$window.Height=160;$ui.Compact.Content='+';$ui.Compact.ToolTip='展开看板'
+  Update-ContentScale
  }else{
   $script:isCompact=$false
   $window.MaxHeight=860;$window.MinHeight=520
   $window.Width=[math]::Max($window.MinWidth,[math]::Min($window.MaxWidth,[double]$script:expandedSize.Width))
   $window.Height=[math]::Max($window.MinHeight,[math]::Min([math]::Min($window.MaxHeight,[Windows.SystemParameters]::WorkArea.Height-24),[double]$script:expandedSize.Height))
   $ui.FullPanel.Visibility='Visible';$ui.MiniPanel.Visibility='Collapsed';$ui.ResizeGrip.Visibility='Visible';$ui.Compact.Content='−';$ui.Compact.ToolTip='折叠为小窗'
+  Update-ContentScale
  }
 })
 $ui.Play.Add_Click({Select-Game})
@@ -585,6 +601,18 @@ if($Preview){
   Save-Shot 'mini'
   $ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));$window.UpdateLayout()
   if($script:isCompact -or [math]::Abs($window.ActualWidth-420) -gt 1 -or [math]::Abs($window.ActualHeight-640) -gt 1 -or $ui.ResizeGrip.Visibility -ne 'Visible'){throw 'Expanded size restore failed'}
+  Update-ContentScale
+  $mediumScale=[Windows.Media.ScaleTransform]$ui.MainContent.LayoutTransform
+  if($mediumScale.ScaleX -le 1 -or [math]::Abs($mediumScale.ScaleX-$mediumScale.ScaleY) -gt 0.001){throw 'Proportional medium scaling failed'}
+  Save-Shot 'scaled-medium'
+  $window.Width=540;$window.Height=860;$window.UpdateLayout();Update-ContentScale
+  $largeScale=[Windows.Media.ScaleTransform]$ui.MainContent.LayoutTransform
+  if([math]::Abs($largeScale.ScaleX-1.4) -gt 0.01 -or [math]::Abs($largeScale.ScaleX-$largeScale.ScaleY) -gt 0.001){throw 'Proportional large scaling failed'}
+  Save-Shot 'scaled-large'
+  $window.Width=300;$window.Height=520;$window.UpdateLayout();Update-ContentScale
+  $narrowScale=[Windows.Media.ScaleTransform]$ui.MainContent.LayoutTransform
+  if([math]::Abs($window.ActualWidth-300) -gt 1 -or [math]::Abs($narrowScale.ScaleX-(300.0/370.0)) -gt 0.01 -or [math]::Abs($narrowScale.ScaleX-$narrowScale.ScaleY) -gt 0.001){throw 'Proportional narrow scaling failed'}
+  Save-Shot 'scaled-narrow'
   $preferences.Theme=$savedTheme;$preferences.Dark=$savedDark;Apply-Theme;Render-State
   Write-Output ('SHOTS_OK '+$Screenshots)
  }
