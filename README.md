@@ -4,6 +4,21 @@
 
 请在 Release 的 **Assets** 中下载 `Afterhours-2.1.zip`，完整解压后双击 **`Afterhours启动.vbs`**。下方的 `Source code` 为 GitHub 自动生成的源码压缩包。
 
+## 界面与功能预览
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/images/desktop-overview.png"><img src="docs/images/desktop-overview.png" alt="Afterhours 桌面看板与热力图" width="100%"></a></td>
+    <td width="50%"><a href="docs/images/statistics-overview.png"><img src="docs/images/statistics-overview.png" alt="Afterhours 统计面板" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/images/v2.1-mini-bar.png"><img src="docs/images/v2.1-mini-bar.png" alt="Afterhours 2.1 横向时长小条" width="100%"></a></td>
+    <td width="50%"><a href="docs/images/v2.1-performance-data.png"><img src="docs/images/v2.1-performance-data.png" alt="Afterhours 2.1 CPU 优化与数据保护" width="100%"></a></td>
+  </tr>
+</table>
+
+*图片为功能宣传示意，含旧版界面与示例数据；具体行为及限制以以下 2.1 说明为准。CPU 数字为作者本机测试结果；异常处理与备份不保证所有错误均可恢复。*
+
 ## 2.1 更新重点
 
 - 优化 CPU 开销：作者本机 8 分钟对比测试，单核平均 13.9% → 3.0%，约降低 78%；实际表现因设备与场景而异，内存未见明显下降。
