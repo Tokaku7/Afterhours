@@ -3,7 +3,7 @@
  if(-not [IO.File]::Exists($path)){return}
  $raw=[IO.File]::ReadAllText($path,[Text.Encoding]::UTF8)
  if(-not $raw.Trim().StartsWith('[')){throw "$File 必须是有效的 JSON 数组，未修改任何数据。"}
- $rows=@($raw|ConvertFrom-Json -ErrorAction Stop)
+ $rows=@(($raw|ConvertFrom-Json -ErrorAction Stop)|Where-Object{$null -ne $_})  # parens: PS 5.1 emits a JSON array as one object
  foreach($r in $rows){
   if(-not $r -or -not $r.Process -or -not $r.Name){throw "$File 缺少游戏名称或进程名。"}
   if($File -eq 'activity.json'){
