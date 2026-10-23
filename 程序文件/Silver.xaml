@@ -1,0 +1,391 @@
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Afterhours · 游戏时间" Width="370" Height="610" MinWidth="300" MinHeight="520" MaxWidth="540" MaxHeight="860" WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="CanResize" Topmost="False" ShowActivated="False" ShowInTaskbar="False" WindowStartupLocation="Manual">
+  <Window.Resources>
+    <Style x:Key="GameMenuStyle" TargetType="ContextMenu">
+      <Setter Property="HasDropShadow" Value="False" />
+      <Setter Property="Width" Value="272" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ContextMenu">
+            <Border CornerRadius="16" BorderThickness="2" Padding="7">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                  <GradientStop Color="#80FFFFFF" Offset="0" />
+                  <GradientStop Color="#80E7E9E5" Offset="0.6" />
+                  <GradientStop Color="#80F0ECE7" Offset="1" />
+                </LinearGradientBrush>
+              </Border.Background>
+              <Border.BorderBrush>
+                <SolidColorBrush Color="#E9F9FFFF" />
+              </Border.BorderBrush>
+              <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True">
+                <ItemsPresenter />
+              </ScrollViewer>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="GameMenuItemStyle" TargetType="MenuItem">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#303633" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Padding" Value="10,9" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="MenuItem">
+            <Border x:Name="ItemBox" CornerRadius="10" BorderThickness="1" BorderBrush="Transparent" Background="Transparent" Padding="{TemplateBinding Padding}" Margin="0,2">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="20" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{TemplateBinding Header}" Foreground="{TemplateBinding Foreground}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <TextBlock x:Name="Mark" Grid.Column="1" Text="✓" Foreground="#527B9E" Visibility="Hidden" HorizontalAlignment="Right" />
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="ItemBox" Property="Background" Value="#A3DCD4EF" />
+                <Setter TargetName="ItemBox" Property="BorderBrush" Value="#A5F6FBFF" />
+                <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+              </Trigger>
+              <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="ItemBox" Property="Background" Value="#D9EAF8FF" />
+                <Setter TargetName="ItemBox" Property="BorderBrush" Value="#FFFFFFFF" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#303633" />
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+    </Style>
+    <Style TargetType="ToolTip">
+      <Setter Property="Background" Value="#F5FBFF" />
+      <Setter Property="Foreground" Value="#303633" />
+      <Setter Property="BorderBrush" Value="#8FC7DC" />
+      <Setter Property="Padding" Value="10,7" />
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#3E4742" />
+      <Setter Property="Background" Value="#72FFFFFF" />
+      <Setter Property="BorderBrush" Value="#A8FFFFFF" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="10,5" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="#ECFFFFFF" />
+                <Setter TargetName="Frame" Property="BorderBrush" Value="#FAFDFF" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Frame" Property="BorderBrush" Value="#4B91BC" />
+                <Setter TargetName="Frame" Property="BorderThickness" Value="2" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="#B0D8F1" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Frame" Property="Opacity" Value="0.35" />
+                <Setter Property="Cursor" Value="Arrow" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="GameRowStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="10,10" />
+      <Setter Property="Margin" Value="0,0,0,7" />
+      <Style.Triggers>
+        <Trigger Property="Tag" Value="selected">
+          <Setter Property="BorderBrush" Value="#83978B" />
+          <Setter Property="Background" Value="#B8E4E7E2" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="GlassScrollBar" TargetType="ScrollBar">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MaxWidth" Value="6" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="{TemplateBinding Orientation}">
+              <Track.DecreaseRepeatButton>
+                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" />
+              </Track.DecreaseRepeatButton>
+              <Track.Thumb>
+                <Thumb>
+                  <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                      <Border x:Name="Handle" Background="#607F9990" CornerRadius="3" Margin="1,2" />
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter TargetName="Handle" Property="Background" Value="#AA7F9990" />
+                        </Trigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+              <Track.IncreaseRepeatButton>
+                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" />
+              </Track.IncreaseRepeatButton>
+            </Track>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="GlassScroll" TargetType="ScrollViewer">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollViewer">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Margin="0,0,8,0" CanContentScroll="{TemplateBinding CanContentScroll}" />
+              <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Style="{StaticResource GlassScrollBar}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+  <Grid ClipToBounds="True">
+    <Border x:Name="RootGlass" CornerRadius="24" BorderThickness="1" Padding="16,14">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop Color="#D9FFFFFF" Offset="0" />
+          <GradientStop Color="#D4EEF0EC" Offset="0.55" />
+          <GradientStop Color="#D4F3EFEA" Offset="1" />
+        </LinearGradientBrush>
+      </Border.Background>
+      <Border.BorderBrush>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop Color="#FFFFFFFF" Offset="0" />
+          <GradientStop Color="#B0B8CBD6" Offset="0.6" />
+          <GradientStop Color="#FFFFFFFF" Offset="1" />
+        </LinearGradientBrush>
+      </Border.BorderBrush>
+      <Grid>
+        <ScrollViewer Style="{StaticResource GlassScroll}" x:Name="MainScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel x:Name="MainContent">
+            <Grid x:Name="TopHeader" Margin="0,0,0,16">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <Grid x:Name="DragHandle" Background="Transparent" Cursor="SizeAll" ToolTip="拖动移动桌面看板">
+                <TextBlock Text="AFTERHOURS" FontFamily="Segoe UI" FontSize="13" FontWeight="SemiBold" Foreground="#456C83" VerticalAlignment="Center" />
+              </Grid>
+              <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="StatsButton" Content="统计" ToolTip="查看累计与游戏会话" Margin="0,0,5,0" />
+                <Button x:Name="SettingsButton" Content="设置" ToolTip="主题、游戏管理、演示和开机启动" Margin="0,0,5,0" />
+                <Button x:Name="Play" Content="添加" ToolTip="添加需要统计的游戏" Margin="0,0,5,0" />
+                <Button x:Name="Compact" Content="−" Width="30" Padding="0" ToolTip="折叠为小窗" Margin="0,0,5,0" />
+                <Button x:Name="CloseButton" Content="×" Width="30" Padding="0" ToolTip="保存并退出；退出后停止记录" />
+              </StackPanel>
+              <StackPanel x:Name="StatsHeaderActions" Grid.Column="1" Orientation="Horizontal" Visibility="Collapsed">
+                <Border x:Name="StatsRangeBox" Background="#4AFFFFFF" CornerRadius="15" Padding="2" Margin="0,0,8,0">
+                  <StackPanel Orientation="Horizontal">
+                    <Button x:Name="StatsRange7" Content="7 天" Padding="10,4" MinHeight="26" BorderThickness="0" Background="Transparent" FontSize="12" />
+                    <Button x:Name="StatsRange30" Content="30 天" Padding="10,4" MinHeight="26" BorderThickness="0" Background="Transparent" FontSize="12" />
+                    <Button x:Name="StatsRangeAll" Content="全部" Padding="10,4" MinHeight="26" BorderThickness="0" Background="Transparent" FontSize="12" />
+                  </StackPanel>
+                </Border>
+                <Button x:Name="StatsBack" Content="‹  返回" Padding="10,4" MinHeight="30" FontSize="12" ToolTip="回到看板" />
+              </StackPanel>
+            </Grid>
+            <StackPanel x:Name="FullPanel">
+              <Grid>
+                <TextBlock Text="今日前台时长" Foreground="#496C81" FontSize="13" ToolTip="只计算游戏窗口处于前台的时间，可能包含挂机" />
+                <TextBlock x:Name="WeekTotal" Foreground="#496C81" FontSize="13" HorizontalAlignment="Right" />
+              </Grid>
+              <Grid Margin="0,0,0,16">
+                <TextBlock x:Name="Total" Text="0s" FontSize="42" FontFamily="Segoe UI" FontWeight="SemiBold" />
+                <TextBlock x:Name="CurrentGame" FontSize="12" Foreground="#456C83" HorizontalAlignment="Right" VerticalAlignment="Bottom" MaxWidth="175" TextTrimming="CharacterEllipsis" Margin="0,0,0,9" />
+              </Grid>
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="活动" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                  <Button x:Name="CalendarScope" Content="全部游戏 ▾" MaxWidth="220" FontSize="13" ToolTip="选择游戏，查看专属热力图" />
+                  <Button x:Name="ClearFilter" Content="重置" FontSize="12" Margin="5,0,0,0" Visibility="Collapsed" ToolTip="恢复全部游戏汇总" />
+                </StackPanel>
+              </Grid>
+              <Border x:Name="HeatPanel" Width="280" HorizontalAlignment="Center" Background="#7AFFFFFF" BorderBrush="#A0FFFFFF" BorderThickness="1" CornerRadius="18" Padding="0,12">
+                <Grid HorizontalAlignment="Center">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="一" Height="28" FontSize="12" Foreground="#567B91" />
+                    <TextBlock Height="28" />
+                    <TextBlock Text="三" Height="28" FontSize="12" Foreground="#567B91" />
+                    <TextBlock Height="28" />
+                    <TextBlock Text="五" Height="28" FontSize="12" Foreground="#567B91" />
+                    <TextBlock Height="28" />
+                    <TextBlock Text="日" Height="28" FontSize="12" Foreground="#567B91" />
+                  </StackPanel>
+                  <UniformGrid x:Name="Heatmap" Grid.Column="1" Rows="7" Columns="8" Width="224" Height="196" />
+                </Grid>
+              </Border>
+              <Grid Margin="0,8,0,16">
+                <StackPanel Orientation="Horizontal">
+                  <Button x:Name="PrevMonth" Content="‹" Width="28" Padding="0" ToolTip="查看前 8 周" />
+                  <TextBlock x:Name="MonthLabel" Foreground="#496C81" FontSize="12" Margin="8,0" VerticalAlignment="Center" />
+                  <Button x:Name="NextMonth" Content="›" Width="28" Padding="0" ToolTip="查看后 8 周" />
+                </StackPanel>
+                <StackPanel x:Name="HeatLegend" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" ToolTip="每日前台时长：0、少于1小时、1–2小时、2–4小时、4小时以上">
+                  <TextBlock Text="少" FontSize="12" Foreground="#567B91" Margin="0,0,4,0" />
+                  <Border Width="8" Height="8" CornerRadius="2" Background="#E6F5EE" Margin="2,0" />
+                  <Border Width="8" Height="8" CornerRadius="2" Background="#D9EFE6" Margin="2,0" />
+                  <Border Width="8" Height="8" CornerRadius="2" Background="#A7D4C5" Margin="2,0" />
+                  <Border Width="8" Height="8" CornerRadius="2" Background="#6FB7A7" Margin="2,0" />
+                  <Border Width="8" Height="8" CornerRadius="2" Background="#3F7F72" Margin="2,0" />
+                  <TextBlock Text="多" FontSize="12" Foreground="#567B91" Margin="4,0,0,0" />
+                </StackPanel>
+              </Grid>
+              <Grid Margin="0,0,0,9">
+                <TextBlock Text="今日游戏" FontWeight="SemiBold" FontSize="16" />
+                <TextBlock Text="前台时长" FontSize="12" Foreground="#496C81" HorizontalAlignment="Right" VerticalAlignment="Center" />
+              </Grid>
+              <ScrollViewer Style="{StaticResource GlassScroll}" x:Name="GameScroll" Height="116" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Ranking" />
+              </ScrollViewer>
+              <TextBlock x:Name="Health" Visibility="Collapsed" Foreground="#9E4818" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+            <StackPanel x:Name="StatsPanel" Visibility="Collapsed">
+              <Grid Margin="0,0,0,18">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Text="统计" FontSize="24" FontWeight="SemiBold" />
+                  <TextBlock x:Name="StatsRangeLabel" Text="最近 7 天" FontSize="12" Foreground="#496C81" Margin="0,-2,0,0" />
+                </StackPanel>
+                <TextBlock x:Name="StatsDateSpan" Grid.Column="1" FontSize="12" Foreground="#496C81" VerticalAlignment="Center" />
+              </Grid>
+              <Grid Margin="0,0,0,22">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="8" />
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="8" />
+                  <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="StatsTile1" CornerRadius="14" BorderThickness="1" Padding="11,8">
+                  <StackPanel>
+                    <TextBlock Text="总时长" FontSize="11" Foreground="#496C81" />
+                    <TextBlock x:Name="StatsTotal" FontSize="18" FontFamily="Segoe UI" FontWeight="SemiBold" Margin="0,1,0,0" />
+                  </StackPanel>
+                </Border>
+                <Border x:Name="StatsTile2" Grid.Column="2" CornerRadius="14" BorderThickness="1" Padding="11,8">
+                  <StackPanel>
+                    <TextBlock Text="日均" FontSize="11" Foreground="#496C81" />
+                    <TextBlock x:Name="StatsAverage" FontSize="18" FontFamily="Segoe UI" FontWeight="SemiBold" Margin="0,1,0,0" />
+                  </StackPanel>
+                </Border>
+                <Border x:Name="StatsTile3" Grid.Column="4" CornerRadius="14" BorderThickness="1" Padding="11,8">
+                  <StackPanel>
+                    <TextBlock Text="游玩" FontSize="11" Foreground="#496C81" />
+                    <TextBlock x:Name="StatsDays" FontSize="18" FontFamily="Segoe UI" FontWeight="SemiBold" Margin="0,1,0,0" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+              <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="每日时段分布" FontSize="15" FontWeight="SemiBold" />
+                <TextBlock x:Name="StatsHourHint" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11" Foreground="#496C81" Grid.Column="1" MaxWidth="140" TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
+              </Grid>
+              <Canvas x:Name="StatsHours" Height="104" ClipToBounds="True" Margin="0,0,0,22" />
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="游戏占比" FontSize="15" FontWeight="SemiBold" />
+                <TextBlock x:Name="StatsShareHint" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11" Foreground="#496C81" Grid.Column="1" MaxWidth="140" TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
+              </Grid>
+              <Border x:Name="StatsShareCard" CornerRadius="16" BorderThickness="1" Padding="10,12,12,12" Margin="0,0,0,22">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition />
+                  </Grid.ColumnDefinitions>
+                  <Canvas x:Name="StatsDonut" Width="88" Height="88" VerticalAlignment="Center" Margin="0,0,10,0" />
+                  <StackPanel x:Name="StatsGames" Grid.Column="1" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="最近记录" FontSize="15" FontWeight="SemiBold" />
+                <TextBlock x:Name="StatsPlayWindow" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11" Foreground="#496C81" Grid.Column="1" MaxWidth="140" TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
+              </Grid>
+              <Border x:Name="StatsTimelineCard" CornerRadius="16" BorderThickness="1" Padding="14,4" Margin="0,0,0,4">
+                <StackPanel x:Name="StatsTimeline" />
+              </Border>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+        <Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="MiniPanel" Visibility="Collapsed" Background="Transparent">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <!-- 2.1: status dot + today total + current game line; actions appear on hover -->
+          <Grid x:Name="MiniDrag" Background="Transparent" Cursor="SizeAll" ToolTip="今日前台时长 · 拖动移动小条">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse x:Name="MiniDot" Width="8" Height="8" Margin="2,0,12,0" VerticalAlignment="Center" Fill="#59808080" />
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="MiniTime" Text="0s" FontSize="20" FontFamily="Segoe UI" FontWeight="SemiBold" LineHeight="22" LineStackingStrategy="BlockLineHeight" />
+                <TextBlock x:Name="MiniStatus" Text="等待游戏" FontSize="11" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" MaxWidth="200" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+          <StackPanel x:Name="MiniActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+            <StackPanel.Style>
+              <Style TargetType="StackPanel">
+                <Setter Property="Opacity" Value="0" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsMouseOver, ElementName=MiniPanel}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </StackPanel.Style>
+            <Button x:Name="MiniExpand" Content="&#xE740;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Width="28" Height="28" Padding="0" Margin="0,0,4,0" ToolTip="展开看板" />
+            <Button x:Name="MiniClose" Content="&#xE8BB;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10" Width="28" Height="28" Padding="0" ToolTip="保存并退出" />
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+    <Border x:Name="ResizeGrip" Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNWSE" ToolTip="拖动调整大小" />
+  </Grid>
+</Window>

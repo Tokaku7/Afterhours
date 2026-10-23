@@ -19,3 +19,15 @@ performance.json
 # PowerShell temporary files
 *.tmp
 *.bak
+
+# 2.1 backups and private runtime artifacts
+sessions.json
+backups/
+migration-backups/
+*.corrupt-*
+*.migration.tmp
+*.migration.bak
+*.log
+程序文件/*.png
+开发记录/
+*.zip

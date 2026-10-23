@@ -4,12 +4,21 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
 Add-Type -Path (Join-Path $PSScriptRoot 'DesktopLayer.cs') -ReferencedAssemblies @([Windows.Window].Assembly.Location,[Windows.Interop.HwndSource].Assembly.Location,[Windows.Threading.DispatcherObject].Assembly.Location,[System.Xaml.XamlReader].Assembly.Location)
 . (Join-Path $PSScriptRoot 'Tracker.ps1')
+. (Join-Path $PSScriptRoot 'Migration.ps1')
 . (Join-Path $PSScriptRoot 'Demo.ps1')
 . (Join-Path $PSScriptRoot 'DayCard.ps1')
 $script:isDemo=[bool]$DemoMode
-$demoRecords=New-DemoHistory
-$demoSessions=New-DemoSessions $demoRecords
-if (!$DataDirectory) { $DataDirectory = Join-Path $PSScriptRoot 'data' }
+$script:demoRecords=$null
+$script:demoSessions=$null
+function Initialize-DemoData {
+ if($null -eq $script:demoRecords){
+  $history=New-DemoHistory
+  $historySessions=New-DemoSessions $history
+  $script:demoRecords=$history
+  $script:demoSessions=$historySessions
+ }
+}
+if (!$DataDirectory) { $DataDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) 'data' }
 [void][IO.Directory]::CreateDirectory($DataDirectory)
 $mutexId = 'Local\Afterhours-' + ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($DataDirectory.ToLowerInvariant())) -replace '[^a-zA-Z0-9]','')
 $mutex = [Threading.Mutex]::new($false,$mutexId)
@@ -33,19 +42,50 @@ $builtInRules = @(
  [pscustomobject]@{Name='无限暖暖'; Process='x6game-win64-shipping'},
  [pscustomobject]@{Name='无限暖暖'; Process='infinitynikki'}
 )
+# 2.1 data safety: an unreadable file is never replaced with empty data.
+# blockSave[<file>] stays $true until a migration rewrites that file successfully.
+$script:blockSave=@{games=$false;activity=$false;sessions=$false}
+$script:dataNotes=[Collections.ArrayList]::new()
+$script:recovered=@{games=$false;activity=$false;sessions=$false}
+function Use-SafeLoad([string]$Path,[string]$Key){
+ $result=Read-JsonArraySafe $Path
+ if($result.Note){[void]$script:dataNotes.Add($result.Note)}
+ if(-not $result.Ok){$script:blockSave[$Key]=$true}elseif($result.Note){$script:recovered[$Key]=$true}
+ return $result.Rows
+}
 $manualRules=@()
-if (Test-Path -LiteralPath $configPath) { try{$loaded=@((Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json));$manualRules=@($loaded|Where-Object{$_.Process -notlike 'steam-*' -and $_.Process -notin $builtInRules.Process})}catch{} }
+if (Test-Path -LiteralPath $configPath) { $loaded=@(Use-SafeLoad $configPath 'games');$manualRules=@($loaded|Where-Object{$_.Process -and $_.Process -notlike 'steam-*' -and $_.Process -notin $builtInRules.Process}) }
 else { Save-JsonAtomic @() $configPath }
 $steamRules=@(Get-SteamRules | Sort-Object Process -Unique)
 $script:rules=@($builtInRules)+@($manualRules)+@($steamRules)
 foreach($rule in $script:rules){$rule.Name=$rule.Name -replace '^剑网\s*3$','剑网三'}
 $records = @{}
-if (Test-Path -LiteralPath $recordsPath) {
- foreach ($row in @((Get-Content -LiteralPath $recordsPath -Raw | ConvertFrom-Json))) { if ($null -ne $row) { $row.Name=$row.Name -replace '^剑网\s*3$','剑网三'; $records["$($row.Date)|$($row.Process)"] = $row } }
-}
-$sessions=[Collections.ArrayList]::new()
-if(Test-Path -LiteralPath $sessionsPath){try{foreach($item in @((Get-Content -LiteralPath $sessionsPath -Raw|ConvertFrom-Json))){if($item){[void]$sessions.Add($item)}}}catch{}}
+foreach ($row in @(Use-SafeLoad $recordsPath 'activity')) { if ($null -ne $row -and $row.Process) { $row.Name=$row.Name -replace '^剑网\s*3$','剑网三'; $records["$($row.Date)|$($row.Process)"] = $row } }
+$rawSessions=@(Use-SafeLoad $sessionsPath 'sessions')
+$sessions=Merge-Sessions $rawSessions 120
+# A file restored from .bak is rewritten on the first save so the broken copy is replaced.
+$script:activityDirty=$script:recovered.activity
+$script:sessionsDirty=($sessions.Count -ne $rawSessions.Count) -or $script:recovered.sessions
+if($script:recovered.games){try{Save-JsonAtomic @($manualRules) $configPath}catch{}}
+Remove-Variable rawSessions;[GC]::Collect()  # the unmerged list is only needed for the comparison above
 $script:currentSession=$null
+$backupRoot=Join-Path $DataDirectory 'backups'
+function Save-DailyBackup {
+ # 2.1: once per day keep a copy of the three data files; the newest 7 days are kept.
+ try{
+  $folder=Join-Path $backupRoot ([datetime]::Today.ToString('yyyy-MM-dd'))
+  if([IO.Directory]::Exists($folder)){return}
+  [void][IO.Directory]::CreateDirectory($folder)
+  foreach($file in @('activity.json','sessions.json','games.json')){
+   $path=Join-Path $DataDirectory $file
+   if(-not [IO.File]::Exists($path)){continue}
+   try{$null=[IO.File]::ReadAllText($path,[Text.Encoding]::UTF8)|ConvertFrom-Json -ErrorAction Stop}catch{continue}  # never back up a broken file
+   [IO.File]::Copy($path,(Join-Path $folder $file),$true)
+  }
+  @(Get-ChildItem -LiteralPath $backupRoot -Directory|Sort-Object Name -Descending|Select-Object -Skip 7)|ForEach-Object{Remove-Item -LiteralPath $_.FullName -Recurse -Force}
+ }catch{}
+}
+Save-DailyBackup
 [xml]$xaml = Get-Content (Join-Path $PSScriptRoot 'Silver.xaml') -Raw -Encoding UTF8
 $window = [Windows.Markup.XamlReader]::Load([System.Xml.XmlNodeReader]::new($xaml))
 $ui = @{}
@@ -53,11 +93,13 @@ $ui['GameScroll']=$window.FindName('GameScroll')
 $ui['SettingsButton']=$window.FindName('SettingsButton')
 $ui['RootGlass']=$window.FindName('RootGlass')
 $ui['HeatPanel']=$window.FindName('HeatPanel')
-'MainScroll','MainContent','DragHandle','TopHeader','HeaderActions','Subtitle','Compact','CloseButton','FullPanel','MiniPanel','StatsPanel','StatsButton','StatsBack','StatsTotal','StatsGames','StatsTimeline','StatsPlayWindow','StatsRangeLabel','StatsRange7','StatsRange30','StatsRangeAll','StatsRangeBox','StatsHeaderActions','StatsShareHint','StatsDateSpan','StatsAverage','StatsDays','StatsHours','StatsHourHint','StatsTile1','StatsTile2','StatsTile3','StatsDonut','StatsShareCard','StatsTimelineCard','ResizeGrip','Heatmap','Play','Total','Session','MiniTime','Runtime','CurrentGame','DateRange','Ranking','WeekTotal','Health','GameCount','PrevMonth','NextMonth','MonthLabel','CalendarScope','ClearFilter','HeatLegend' | ForEach-Object { $ui[$_]=$window.FindName($_) }
+'MiniDrag','MiniExpand','MiniClose','MiniDot','MiniStatus','MiniActions','MainScroll','MainContent','DragHandle','TopHeader','HeaderActions','Subtitle','Compact','CloseButton','FullPanel','MiniPanel','StatsPanel','StatsButton','StatsBack','StatsTotal','StatsGames','StatsTimeline','StatsPlayWindow','StatsRangeLabel','StatsRange7','StatsRange30','StatsRangeAll','StatsRangeBox','StatsHeaderActions','StatsShareHint','StatsDateSpan','StatsAverage','StatsDays','StatsHours','StatsHourHint','StatsTile1','StatsTile2','StatsTile3','StatsDonut','StatsShareCard','StatsTimelineCard','ResizeGrip','Heatmap','Play','Total','Session','MiniTime','Runtime','CurrentGame','DateRange','Ranking','WeekTotal','Health','GameCount','PrevMonth','NextMonth','MonthLabel','CalendarScope','ClearFilter','HeatLegend' | ForEach-Object { $ui[$_]=$window.FindName($_) }
 $window.Height=[math]::Min(610,[Windows.SystemParameters]::WorkArea.Height-24)
 $window.Left=[Windows.SystemParameters]::WorkArea.Right-$window.Width-20
 $window.Top=[Windows.SystemParameters]::WorkArea.Top+12
 $script:month=[datetime]::Today.AddDays(-(([int][datetime]::Today.DayOfWeek+6)%7))
+$script:anchorMonday=$script:month
+$script:lastStatsRender=-100.0
 $script:heatKey=''
 $script:rankKey=''
 $script:rankControls=@{}
@@ -70,8 +112,8 @@ $script:isCompact=$false
 $script:expandedSize=[pscustomobject]@{Width=$window.Width;Height=$window.Height}
 $startupRegistry='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $startupName='AfterhoursGameTime'
-$startupCommand='wscript.exe "'+(Join-Path $PSScriptRoot 'Afterhours启动.vbs')+'"'
-$legacyStartupCommand='wscript.exe "'+(Join-Path $PSScriptRoot 'Afterhours.vbs')+'"'
+$startupCommand='wscript.exe "'+(Join-Path (Split-Path $PSScriptRoot -Parent) 'Afterhours启动.vbs')+'"'
+$legacyStartupCommand='wscript.exe "'+(Join-Path (Split-Path $PSScriptRoot -Parent) 'Afterhours.vbs')+'"'
 function Test-StartupEnabled {
  $value=(Get-ItemProperty -LiteralPath $startupRegistry -Name $startupName -ErrorAction SilentlyContinue).$startupName
  return $value -eq $startupCommand -or $value -eq $legacyStartupCommand
@@ -84,7 +126,7 @@ function New-ThemeGradient($a,$b,$c){
  return $brush
 }
 function Set-ThemeText($root){
- if($root -is [Windows.Controls.TextBlock] -and $root.Name -notin @('Name','Game')){$root.Foreground=$script:themeText}
+ if($root -is [Windows.Controls.TextBlock] -and $root.Name -notin @('Name','Game','MiniStatus')){$root.Foreground=$script:themeText}
  if($root -is [Windows.Controls.Button]){$root.Foreground=$script:themeText;$root.BorderBrush=$script:glassBorder;if($root.Name -in @('StatsBack','StatsButton','SettingsButton','Play','Compact','CloseButton','CalendarScope','ClearFilter','PrevMonth','NextMonth')){$root.Background=$script:buttonBackground}}
  $count=[Windows.Media.VisualTreeHelper]::GetChildrenCount($root)
  for($i=0;$i -lt $count;$i++){Set-ThemeText ([Windows.Media.VisualTreeHelper]::GetChild($root,$i))}
@@ -100,7 +142,7 @@ function Update-ContentScale {
  $height=if($window.ActualHeight -gt 0){$window.ActualHeight}else{$window.Height}
  $scale=[math]::Max(0.78,[math]::Min(1.40,[math]::Min($width/370.0,$height/610.0)))
  $ui.MainContent.LayoutTransform=[Windows.Media.ScaleTransform]::new($scale,$scale)
- if($ui.MainScroll.ActualWidth -gt 0){$ui.MainContent.Width=[math]::Max(300,$ui.MainScroll.ActualWidth/$scale)}
+ if($ui.MainScroll.ViewportWidth -gt 0){$ui.MainContent.Width=[math]::Max(260,$ui.MainScroll.ViewportWidth/$scale)}
 }
 function Apply-Theme {
  # 主题色板：玻璃底色 / 选中控件 / 主图表色 / 次图表色 / 三级图表色 / 文字
@@ -136,24 +178,123 @@ function Apply-Theme {
 }
 if(-not $Preview){$window.Add_SourceInitialized({
  $script:desktop=[DesktopLayer]::new($window)
+ # 2.1: DesktopLayer raises SaveRequested on logoff/shutdown and before sleep.
+ $script:desktop.add_SaveRequested({try{Save-Activity -Force}catch{}})
  Save-JsonAtomic ([pscustomobject]@{Pid=$PID;Handle=([Windows.Interop.WindowInteropHelper]::new($window)).Handle.ToInt64();BlurEnabled=$script:desktop.BlurEnabled;Mode='Desktop';Started=[datetime]::Now.ToString('o')}) (Join-Path $DataDirectory 'runtime.json')
 })}
-if(-not $Preview){$window.Add_ContentRendered({$script:desktop.Lower()})}
+if(-not $Preview){$window.Add_ContentRendered({$script:desktop.Lower();$global:AfterhoursStarted=$true;Keep-OnScreen})}
+# 2.1: an exception in any UI handler used to end the whole process without saving
+# (one plausible cause of "游戏闪退后看板也一起退出"). Log it, save, keep running.
+$window.Dispatcher.Add_UnhandledException({param($sender,$eventArgs)
+ Write-RuntimeLog $eventArgs.Exception
+ $script:runtimeWarning='界面出现错误，已记录到 data/runtime-error.log，计时继续。'
+ try{Save-Activity -Force}catch{}
+ $eventArgs.Handled=$true
+})
 $script:last = Read-Snapshot $script:rules
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $script:lastTick = $clock.Elapsed.TotalSeconds
-$script:lastSaved = 0.0
+$script:lastActivitySave = 0.0
+$script:lastSessionsSave = 0.0
 $script:saveError = ''
-function Save-Activity {
- try { Save-JsonAtomic @($records.Values) $recordsPath; Save-JsonAtomic @($sessions) $sessionsPath; $script:saveError='' }
+$script:runtimeWarning = ''
+# 2.1: save only when something changed: activity every 30 s, sessions every 60 s
+# (sessions.json is ~1 MB; 2.0.3 rewrote both files every 5 s even when idle).
+# -Force is used on exit, lock, sleep, shutdown and before migration.
+function Save-Activity([switch]$Force){
+ $now=$clock.Elapsed.TotalSeconds
+ try {
+  if($script:activityDirty -and -not $script:blockSave.activity -and ($Force -or $now-$script:lastActivitySave -ge 30)){Save-JsonAtomic @($records.Values) $recordsPath;$script:activityDirty=$false;$script:lastActivitySave=$now}
+  if($script:sessionsDirty -and -not $script:blockSave.sessions -and ($Force -or $now-$script:lastSessionsSave -ge 60)){Save-JsonAtomic @($sessions) $sessionsPath;$script:sessionsDirty=$false;$script:lastSessionsSave=$now}
+  $script:saveError=''
+ }
  catch { $script:saveError='保存失败：' + $_.Exception.Message }
 }
+function Write-RuntimeLog($ErrorRecord){
+ # 2.1: errors after startup go to runtime-error.log (startup-error.log is only for launch failures).
+ try{[IO.File]::AppendAllText((Join-Path $DataDirectory 'runtime-error.log'),("[{0}] {1}`r`n" -f [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss'),($ErrorRecord|Out-String)),[Text.UTF8Encoding]::new($false))}catch{}
+}
+function Save-Games {
+ if($script:blockSave.games){[void][Windows.MessageBox]::Show('games.json 无法读取，为保护原文件，本次修改不会保存。请先检查 data 文件夹。','Afterhours');return}
+ Save-JsonAtomic @($script:manualRules) $configPath
+}
 function Update-Session($snapshot,[double]$seconds){
- $rule=@($script:rules|Where-Object Process -eq $snapshot.Front|Select-Object -First 1)
- $valid=$snapshot.Readable -and $seconds -gt 0 -and $seconds -le 5 -and $rule.Count
- if($valid -and $script:currentSession -and $script:currentSession.Process -eq $snapshot.Front){$script:currentSession.End=$snapshot.Time.ToString('o');$script:currentSession.Seconds=[double]$script:currentSession.Seconds+$seconds;return}
- if($script:currentSession){$script:currentSession.End=$snapshot.Time.ToString('o');$script:currentSession=$null}
- if($valid){$item=[pscustomobject]@{Process=$snapshot.Front;Name=$rule[0].Name;Start=$snapshot.Time.AddSeconds(-$seconds).ToString('o');End=$snapshot.Time.ToString('o');Seconds=$seconds};[void]$sessions.Add($item);$script:currentSession=$item}
+ # 2.1: an invalid second (alt-tab, lock, unreadable foreground) no longer ends the
+ # session; End simply stays at the last counted second. If the same game is back
+ # in front within 120 s, the session continues, also across a restart.
+ if(-not [object]::ReferenceEquals($script:rules,$script:ruleLookupSource)){
+  $script:ruleLookupSource=$script:rules;$script:ruleLookup=@{}
+  foreach($r in $script:rules){$k=$r.Process.ToLowerInvariant();if(-not $script:ruleLookup.ContainsKey($k)){$script:ruleLookup[$k]=$r}}
+ }
+ $rule=@($script:ruleLookup[$snapshot.Front]|Where-Object{$_})
+ if(-not ($snapshot.Readable -and $seconds -gt 0 -and $seconds -le 5 -and $rule.Count)){return}
+ $current=$script:currentSession
+ if(-not $current -and $sessions.Count){$current=$sessions[$sessions.Count-1]}
+ $gap=if($current){try{($snapshot.Time-[datetime]$current.End).TotalSeconds}catch{[double]::MaxValue}}else{[double]::MaxValue}
+ if($current -and $current.Process -eq $snapshot.Front -and $gap -le 120){
+  $current.End=$snapshot.Time.ToString('o');$current.Seconds=[double]$current.Seconds+$seconds;$script:currentSession=$current
+ }else{
+  $item=[pscustomobject]@{Process=$snapshot.Front;Name=$rule[0].Name;Start=$snapshot.Time.AddSeconds(-$seconds).ToString('o');End=$snapshot.Time.ToString('o');Seconds=$seconds};[void]$sessions.Add($item);$script:currentSession=$item
+ }
+ $script:sessionsDirty=$true
+}
+function Get-WorkAreaDip {
+ # Work area of the monitor that holds the window, in WPF units (DPI aware).
+ $handle=([Windows.Interop.WindowInteropHelper]::new($window)).Handle
+ $screen=if($handle -ne [IntPtr]::Zero){[Windows.Forms.Screen]::FromHandle($handle)}else{[Windows.Forms.Screen]::PrimaryScreen}
+ $area=$screen.WorkingArea
+ $source=[Windows.PresentationSource]::FromVisual($window)
+ $matrix=if($source -and $source.CompositionTarget){$source.CompositionTarget.TransformFromDevice}else{[Windows.Media.Matrix]::Identity}
+ $topLeft=$matrix.Transform([Windows.Point]::new($area.Left,$area.Top));$bottomRight=$matrix.Transform([Windows.Point]::new($area.Right,$area.Bottom))
+ return [Windows.Rect]::new($topLeft,$bottomRight)
+}
+function Keep-OnScreen {
+ # 2.1: keep the whole window inside the current monitor's work area.
+ try{
+  $area=Get-WorkAreaDip
+  $width=if($window.ActualWidth -gt 0){$window.ActualWidth}else{$window.Width}
+  $height=if($window.ActualHeight -gt 0){$window.ActualHeight}else{$window.Height}
+  $window.Left=[math]::Max($area.Left,[math]::Min($window.Left,$area.Right-$width))
+  $window.Top=[math]::Max($area.Top,[math]::Min($window.Top,$area.Bottom-$height))
+ }catch{}
+}
+function Resize-Anchored([double]$NewWidth,[double]$NewHeight){
+ # 2.1: grow/shrink toward the screen centre: a window in the right half keeps its
+ # right edge, one in the lower half keeps its bottom edge. Then clamp to screen.
+ $area=Get-WorkAreaDip
+ $oldWidth=if($window.ActualWidth -gt 0){$window.ActualWidth}else{$window.Width}
+ $oldHeight=if($window.ActualHeight -gt 0){$window.ActualHeight}else{$window.Height}
+ $right=$window.Left+$oldWidth;$bottom=$window.Top+$oldHeight
+ $keepRight=($window.Left+$oldWidth/2) -gt ($area.Left+$area.Width/2)
+ $keepBottom=($window.Top+$oldHeight/2) -gt ($area.Top+$area.Height/2)
+ $window.Width=$NewWidth;$window.Height=$NewHeight
+ if($keepRight){$window.Left=$right-$NewWidth}
+ if($keepBottom){$window.Top=$bottom-$NewHeight}
+ $window.UpdateLayout()
+ Keep-OnScreen
+}
+function Update-MiniStatus {
+ # 2.1 mini bar: dot = theme colour while counting in front, light while only running
+ # in background, grey when idle or paused; second line names the game and this session.
+ $brushes=[Windows.Media.BrushConverter]::new()
+ $frontRule=$null;$backRule=$null
+ foreach($r in $script:rules){
+  if(-not $frontRule -and $r.Process -eq $script:last.Front){$frontRule=$r}
+  elseif(-not $backRule -and $script:last.Names.ContainsKey($r.Process)){$backRule=$r}
+ }
+ if($script:isDemo){$text='演示模式 · 示例数据';$dot=$script:barDark}
+ elseif(-not $script:last.Readable -and -not $Preview){$text='已暂停 · 锁屏或桌面不可读';$dot=$null}
+ elseif($frontRule){
+  $session=$script:currentSession
+  $text=if($session -and $session.Process -eq $frontRule.Process){$frontRule.Name+' · 本次 '+(Format-CompactDuration ([double]$session.Seconds))}else{$frontRule.Name+' · 计时中'}
+  $dot=$script:barDeep
+ }
+ elseif($backRule){$text=$backRule.Name+' · 后台运行';$dot=$script:barLight}
+ else{$text='等待游戏';$dot=$null}
+ $ui.MiniStatus.Text=$text
+ $ui.MiniStatus.Foreground=if($script:isDark){$brushes.ConvertFromString([string]$script:barLight)}else{$brushes.ConvertFromString([string]$script:barDeep)}
+ $ui.MiniStatus.Opacity=if($dot){1.0}else{0.7}
+ $ui.MiniDot.Fill=if($dot){$brushes.ConvertFromString([string]$dot)}else{$brushes.ConvertFromString($(if($script:isDark){'#59FFFFFF'}else{'#47303633'}))}
 }
 function Format-CompactDuration([double]$Seconds){
  if($Seconds -lt 60){return Format-Duration $Seconds}
@@ -162,6 +303,11 @@ function Format-CompactDuration([double]$Seconds){
  return "$([math]::Floor($value.TotalMinutes))m"
 }
 function Render-State {
+ # 2.1: when a new week starts while the app keeps running, move the heatmap page
+ # along if the user was looking at the current page.
+ $currentMonday=[datetime]::Today.AddDays(-(([int][datetime]::Today.DayOfWeek+6)%7))
+ if($script:anchorMonday -ne $currentMonday){if($script:month -eq $script:anchorMonday){$script:month=$currentMonday};$script:anchorMonday=$currentMonday;$script:heatKey=''}
+ if($script:isDemo){Initialize-DemoData}
  $displayRecords=if($script:isDemo){$demoRecords}else{$records}
  $ui.CalendarScope.Content=if($script:selectedGame){$script:selectedGame+' ▾'}else{'全部游戏 ▾'}
  $ui.ClearFilter.Visibility=if($script:selectedGame){'Visible'}else{'Collapsed'}
@@ -169,22 +315,25 @@ function Render-State {
  $todayRows = @($displayRecords.Values | Where-Object Date -eq $today)
  $fg = [double](($todayRows | Measure-Object Foreground -Sum).Sum)
  $run = [double](($todayRows | Measure-Object Running -Sum).Sum)
- $ui.Total.Text = Format-CompactDuration $fg
  $ui.MiniTime.Text = Format-CompactDuration $fg
+ Update-MiniStatus
+ if($script:isCompact){return}
+ $ui.Total.Text = Format-CompactDuration $fg
  $ui.Total.ToolTip = '运行累计 ' + (Format-Duration $run) + ' · 后台 ' + (Format-Duration ($run-$fg))
  $active = @($script:rules | Where-Object { $script:last.Names.ContainsKey($_.Process.ToLowerInvariant()) })
  $frontGame = @($active | Where-Object { $_.Process -eq $script:last.Front })
  $ui.CurrentGame.Text = if ($frontGame.Count) { $frontGame[0].Name + ' · 前台' } elseif ($active.Count) { $active[0].Name + ' · 后台' } else { '等待游戏' }
  if($script:isDemo){$ui.CurrentGame.Text='演示模式 · 示例数据'}
- $ui.CurrentGame.ToolTip = if ($script:last.Readable) { '当前前台：' + $script:last.FrontLabel + "`n已识别 $($steamRules.Count) 款 Steam 游戏；每 5 秒本地保存。" } else { '前台不可读或桌面锁定，暂停累计。' }
- $ui.Health.Text = if ($script:saveError) { $script:saveError } elseif (-not $script:last.Readable) { '无法读取交互桌面。请在桌面双击启动；锁屏期间不计时。' } else { "已识别 $($steamRules.Count) 款 Steam 游戏 · 每 5 秒保存 · 从现在起统计" }
- $ui.Health.Visibility=if($script:saveError -or (-not $script:last.Readable -and -not $Preview)){'Visible'}else{'Collapsed'}
+ $ui.CurrentGame.ToolTip = if ($script:last.Readable) { '当前前台：' + $script:last.FrontLabel + "`n已识别 $($steamRules.Count) 款 Steam 游戏；有变化时自动保存。" } else { '前台不可读或桌面锁定，暂停累计。' }
+ $notes=@($script:dataNotes)+@($script:runtimeWarning|Where-Object{$_})
+ $ui.Health.Text = if ($script:saveError) { $script:saveError } elseif ($notes.Count) { $notes -join "`n" } elseif (-not $script:last.Readable) { '无法读取交互桌面。请在桌面双击启动；锁屏期间不计时。' } else { "已识别 $($steamRules.Count) 款 Steam 游戏 · 自动保存 · 从现在起统计" }
+ $ui.Health.Visibility=if($script:saveError -or $notes.Count -or (-not $script:last.Readable -and -not $Preview)){'Visible'}else{'Collapsed'}
  $games=@($todayRows | Group-Object Name | ForEach-Object {
   [pscustomobject]@{Name=$_.Name;Foreground=[double](($_.Group|Measure-Object Foreground -Sum).Sum);Running=[double](($_.Group|Measure-Object Running -Sum).Sum)}
  } | Sort-Object Foreground -Descending)
  $script:expandedHeight=[math]::Min(750,610+[math]::Max(0,$games.Count-1)*70)
  $ui.GameScroll.Height=[math]::Min(216,76*[math]::Max(1,$games.Count))
- if($ui.FullPanel.Visibility -eq 'Visible' -and -not $script:userResized){$window.Height=[math]::Min($script:expandedHeight,[Windows.SystemParameters]::WorkArea.Height-24)}
+ if($ui.FullPanel.Visibility -eq 'Visible' -and -not $script:userResized){$autoHeight=[math]::Min($script:expandedHeight,[Windows.SystemParameters]::WorkArea.Height-24);if([math]::Abs($window.Height-$autoHeight) -gt 0.5){$window.Height=$autoHeight;$window.UpdateLayout();Keep-OnScreen}}
  $rankKey=($games.Name -join '|')
  if($script:rankKey -ne $rankKey -or $ui.Ranking.Children.Count -eq 0){
   $script:rankKey=$rankKey; $ui.Ranking.Children.Clear(); $script:rankControls=@{}
@@ -273,7 +422,8 @@ function Render-State {
  $ui.WeekTotal.Text='本周 ' + (Format-CompactDuration $weekSum)
  Set-ThemeText $window
  foreach($game in $games){$row=$script:rankControls[$game.Name];$row.FindName('Name').Foreground=(Get-GameTint $game.Name)[2];$row.FindName('Front').Foreground=$script:themeText}
- if($ui.StatsPanel.Visibility -eq 'Visible'){Render-Stats}
+ # 2.1: the stats page is rebuilt at most every 10 s from the timer; clicks still render at once.
+ if($ui.StatsPanel.Visibility -eq 'Visible' -and $clock.Elapsed.TotalSeconds-$script:lastStatsRender -ge 10){Render-Stats}
 }
 function New-VerticalGradient($topColor,$bottomColor){
  $brush=[Windows.Media.LinearGradientBrush]::new();$brush.StartPoint='0,0';$brush.EndPoint='0,1'
@@ -343,6 +493,8 @@ function Render-StatsHours($rangeSessions){
  Set-ThemeText $ui.StatsHours
 }
 function Render-Stats {
+ $script:lastStatsRender=$clock.Elapsed.TotalSeconds
+ if($script:isDemo){Initialize-DemoData}
  $source=if($script:isDemo){$demoRecords}else{$records};$allRows=@($source.Values);$cutoff=if($script:statsRange -eq 7){[datetime]::Today.AddDays(-6)}elseif($script:statsRange -eq 30){[datetime]::Today.AddDays(-29)}else{[datetime]::MinValue};$rows=@($allRows|Where-Object{try{[datetime]$_.Date -ge $cutoff}catch{$false}})
  $total=[double](($rows|Measure-Object Foreground -Sum).Sum);$days=@($rows|Where-Object Foreground -gt 0|Select-Object -ExpandProperty Date -Unique);$average=if($days.Count){$total/$days.Count}else{0}
  $script:statsTrack=if($script:isDark){'#24FFFFFF'}else{'#16303633'};$script:statsRowBackground='Transparent';$script:statsRowHover=if($script:isDark){'#26FFFFFF'}else{'#66FFFFFF'}
@@ -350,7 +502,7 @@ function Render-Stats {
  $firstDate=if($script:statsRange -eq 0){$sortedDates=@($days|Sort-Object);if($sortedDates.Count){[datetime]$sortedDates[0]}else{[datetime]::Today}}else{$cutoff}
  $ui.StatsDateSpan.Text=$firstDate.ToString('M月d日')+' — '+[datetime]::Today.ToString('M月d日')
  $ui.StatsTotal.Text=Format-CompactDuration $total;$ui.StatsAverage.Text=Format-CompactDuration $average;$ui.StatsDays.Text=$days.Count.ToString()+' 天'
- foreach($button in @($ui.StatsRange7,$ui.StatsRange30,$ui.StatsRangeAll)){$active=($button -eq $ui.StatsRange7 -and $script:statsRange -eq 7)-or($button -eq $ui.StatsRange30 -and $script:statsRange -eq 30)-or($button -eq $ui.StatsRangeAll -and $script:statsRange -eq 0);$button.Background=if($active){$script:barDeep}else{'Transparent'};$button.FontWeight=if($active){'SemiBold'}else{'Normal'};$button.Tag=if($active){'active'}else{''}}
+ foreach($button in @($ui.StatsRange7,$ui.StatsRange30,$ui.StatsRangeAll)){$active=($button -eq $ui.StatsRange7 -and $script:statsRange -eq 7)-or($button -eq $ui.StatsRange30 -and $script:statsRange -eq 30)-or($button -eq $ui.StatsRangeAll -and $script:statsRange -eq 0);$button.Background=if($active){('#24'+([string]$script:barDeep).Substring(1))}else{'Transparent'};$button.FontWeight=if($active){'SemiBold'}else{'Normal'};$button.Tag=if($active){'active'}else{''}}
  $games=@($rows|Group-Object Name|ForEach-Object{[pscustomobject]@{Name=$_.Name;Seconds=[double](($_.Group|Measure-Object Foreground -Sum).Sum)}}|Where-Object Seconds -gt 0|Sort-Object Seconds -Descending)
  $ui.StatsGames.Children.Clear();$script:statsGameBrush=@{}
  for($gameIndex=0;$gameIndex -lt $games.Count;$gameIndex++){$game=$games[$gameIndex];$chartBrush=$script:chartColors[$gameIndex%$script:chartColors.Count];$game|Add-Member -NotePropertyName ChartBrush -NotePropertyValue $chartBrush -Force;$script:statsGameBrush[$game.Name]=$chartBrush}
@@ -372,7 +524,11 @@ function Render-Stats {
   [void]$ui.StatsTimeline.Children.Add($row)}catch{}}
  if(-not $ui.StatsTimeline.Children.Count){$empty=[Windows.Controls.TextBlock]::new();$empty.Text='还没有会话记录 · 2.0 起会记录每次游戏的起止时间';$empty.Opacity=.6;$empty.FontSize=12;$empty.Margin='0,8';[void]$ui.StatsTimeline.Children.Add($empty)}
  Set-ThemeText $ui.StatsPanel;Set-ThemeText $ui.StatsHeaderActions
- foreach($button in @($ui.StatsRange7,$ui.StatsRange30,$ui.StatsRangeAll)){if($button.Tag -eq 'active'){$button.Foreground='#FFFFFFFF'}}
+  foreach($button in @($ui.StatsRange7,$ui.StatsRange30,$ui.StatsRangeAll)){
+  $button.Foreground=$script:themeText
+  $button.BorderThickness=1
+  $button.BorderBrush=if($button.Tag -eq 'active'){('#60'+([string]$script:barDeep).Substring(1))}else{'Transparent'}
+ }
 }
 function Get-DayTooltip([string]$Date){
  $source=if($script:isDemo){$demoRecords}else{$records}
@@ -410,7 +566,7 @@ function Select-Game {
    $newRule=[pscustomobject]@{Name=$nameBox.Text.Trim(); Process=$processName}
    $script:manualRules=@($script:manualRules|Where-Object Process -ne $processName)+@($newRule)
    $script:rules=@($builtInRules)+@($script:manualRules)+@($steamRules)
-   Save-JsonAtomic @($script:manualRules) $configPath
+   Save-Games
    $picker.Close()
   }
  })
@@ -422,11 +578,34 @@ function Manage-Games {
  $picker=[Windows.Window]::new();$picker.Title='管理手动添加的游戏';$picker.Width=420;$picker.Height=420;$picker.Owner=$window;$picker.WindowStartupLocation='CenterOwner';$picker.Background='#EDF5FA'
  $panel=[Windows.Controls.StackPanel]::new();$panel.Margin=20;$hint=[Windows.Controls.TextBlock]::new();$hint.Text='这里只显示手动添加的规则；内置与 Steam 自动规则不会被删除。';$hint.TextWrapping='Wrap';$hint.Margin='0,0,0,12';[void]$panel.Children.Add($hint)
  $list=[Windows.Controls.ListBox]::new();$list.Height=260;foreach($r in $script:manualRules){[void]$list.Items.Add("$($r.Name)  ·  $($r.Process)")};[void]$panel.Children.Add($list)
- $delete=[Windows.Controls.Button]::new();$delete.Content='删除选中规则';$delete.Margin='0,12,0,0';$delete.Add_Click({if($list.SelectedIndex -ge 0){$script:manualRules=@($script:manualRules|Where-Object Process -ne $script:manualRules[$list.SelectedIndex].Process);$script:rules=@($builtInRules)+@($script:manualRules)+@($steamRules);Save-JsonAtomic @($script:manualRules) $configPath;$picker.Close();Render-State}});[void]$panel.Children.Add($delete);$picker.Content=$panel;[void]$picker.ShowDialog()
+ $delete=[Windows.Controls.Button]::new();$delete.Content='删除选中规则';$delete.Margin='0,12,0,0';$delete.Add_Click({if($list.SelectedIndex -ge 0){$script:manualRules=@($script:manualRules|Where-Object Process -ne $script:manualRules[$list.SelectedIndex].Process);$script:rules=@($builtInRules)+@($script:manualRules)+@($steamRules);Save-Games;$picker.Close();Render-State}});[void]$panel.Children.Add($delete);$picker.Content=$panel;[void]$picker.ShowDialog()
 }
-$ui.DragHandle.Add_MouseLeftButtonDown({ $window.DragMove() })
+$ui.DragHandle.Add_MouseLeftButtonDown({ $window.DragMove(); Keep-OnScreen })
 $ui.PrevMonth.Add_Click({$script:month=$script:month.AddDays(-56);Render-State})
 $ui.ClearFilter.Add_Click({$script:selectedGame='';Render-State})
+function Show-Migration {
+ $running=$timer.IsEnabled;$timer.Stop()
+ try{
+  $picker=[Windows.Forms.FolderBrowserDialog]::new();$picker.Description='选择实际使用过的旧版 Afterhours 文件夹（或其中的 data）'
+  try{if($picker.ShowDialog() -ne [Windows.Forms.DialogResult]::OK){return};$source=$picker.SelectedPath}finally{$picker.Dispose()}
+  Save-Activity -Force
+  if($script:saveError){throw $script:saveError}
+  $plan=New-MigrationPlan $source $DataDirectory
+  $message="来源：$($plan.Source)`n日期：$($plan.From) 至 $($plan.To)`n共 $($plan.Days) 天，前台 $([math]::Round($plan.Seconds/3600,2)) 小时。`n`n"
+  if($plan.Conflicts){$message+="有 $($plan.Conflicts) 条同日同游戏记录与当前不同。继续将以旧版这些记录为准，保留当前其他日期，不把冲突时长相加；可能舍弃新版在这些条目上的增量。`n`n"}
+  $message+='将先备份当前数据再导入，主题设置保持当前选择。是否继续？'
+  if([Windows.MessageBox]::Show($window,$message,'迁移旧版数据','YesNo','Question') -ne 'Yes'){return}
+  $backup=Invoke-MigrationPlan $plan -PreferSource
+  $records.Clear();foreach($r in @(Read-MigrationRows $DataDirectory 'activity.json')){$records["$($r.Date)|$($r.Process)"]=$r}
+  $sessions.Clear();foreach($r in @(Merge-Sessions @(Read-MigrationRows $DataDirectory 'sessions.json') 120)){[void]$sessions.Add($r)};$script:currentSession=$null
+  # Migration rewrote all three files with validated data, so saving is safe again.
+  $script:blockSave=@{games=$false;activity=$false;sessions=$false};$script:dataNotes.Clear();$script:activityDirty=$false;$script:sessionsDirty=$true
+  $script:manualRules=@(Read-MigrationRows $DataDirectory 'games.json'|Where-Object{$_.Process -notlike 'steam-*' -and $_.Process -notin $builtInRules.Process});$script:rules=@($builtInRules)+@($script:manualRules)+@($steamRules)
+  $script:heatKey='';$script:rankKey='';$script:month=[datetime]::Today.AddDays(-(([int][datetime]::Today.DayOfWeek+6)%7));$script:anchorMonday=$script:month;Render-State
+  [void][Windows.MessageBox]::Show($window,"迁移完成。首页只显示今天，请在统计中选择全部查看历史。`n`n原数据备份：$backup",'Afterhours')
+ }catch{[void][Windows.MessageBox]::Show($window,($_.Exception.Message),'迁移未完成','OK','Warning')}
+ finally{$script:lastTick=$clock.Elapsed.TotalSeconds;if($running){$timer.Start()}}
+}
 function New-SettingsMenu {
  $menu=[Windows.Controls.ContextMenu]::new();$menu.Style=$window.FindResource('GameMenuStyle');$menu.Placement='Bottom';$menu.VerticalOffset=5
  $menu.Add_Loaded({param($sender,$eventArgs)$source=[Windows.Interop.HwndSource]::FromVisual($sender);if($source){[DesktopLayer]::BlurPopup($source.Handle)}})
@@ -438,6 +617,7 @@ function New-SettingsMenu {
  $dark.Add_Click({$preferences.Dark=-not $preferences.Dark;Save-JsonAtomic $preferences $preferencesPath;Apply-Theme;Render-State});[void]$menu.Items.Add($dark)
  $demo=[Windows.Controls.MenuItem]::new();$demo.Header=if($script:isDemo){'返回实测'}else{'查看演示数据'};$demo.IsCheckable=$true;$demo.IsChecked=$script:isDemo;$demo.Style=$window.FindResource('GameMenuItemStyle');$demo.Add_Click({$script:isDemo=-not $script:isDemo;$script:selectedGame='';$script:heatKey='';Render-State});[void]$menu.Items.Add($demo)
  $manage=[Windows.Controls.MenuItem]::new();$manage.Header='管理手动游戏';$manage.Style=$window.FindResource('GameMenuItemStyle');$manage.Add_Click({Manage-Games});[void]$menu.Items.Add($manage)
+ $migration=[Windows.Controls.MenuItem]::new();$migration.Header='迁移旧版数据…';$migration.Style=$window.FindResource('GameMenuItemStyle');$migration.Add_Click({Show-Migration});[void]$menu.Items.Add($migration)
  $startup=[Windows.Controls.MenuItem]::new();$startup.Header='开机启动';$startup.IsCheckable=$true;$startup.IsChecked=Test-StartupEnabled;$startup.Style=$window.FindResource('GameMenuItemStyle')
  $startup.Add_Click({try{if(Test-StartupEnabled){Remove-ItemProperty -LiteralPath $startupRegistry -Name $startupName -ErrorAction SilentlyContinue}else{Set-ItemProperty -LiteralPath $startupRegistry -Name $startupName -Value $startupCommand -Type String}}catch{[Windows.MessageBox]::Show('无法修改开机启动：'+$_.Exception.Message,'Afterhours')|Out-Null}});[void]$menu.Items.Add($startup)
  return $menu
@@ -466,8 +646,8 @@ $ui.CalendarScope.Add_Click({
 })
 $ui.NextMonth.Add_Click({if($script:month -lt [datetime]::Today.AddDays(-(([int][datetime]::Today.DayOfWeek+6)%7))){$script:month=$script:month.AddDays(56);Render-State}})
 $ui.CloseButton.Add_Click({$window.Close()})
-$ui.StatsButton.Add_Click({$script:preStatsHeight=$window.Height;$ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Collapsed';$ui.HeaderActions.Visibility='Collapsed';$ui.StatsHeaderActions.Visibility='Visible';$ui.TopHeader.Margin='0,0,0,18';$ui.StatsPanel.Visibility='Visible';if(-not $script:userResized){$window.Height=[math]::Min(750,[Windows.SystemParameters]::WorkArea.Height-24)};Render-Stats;if(-not $Preview){$ui.StatsPanel.BeginAnimation([Windows.UIElement]::OpacityProperty,[Windows.Media.Animation.DoubleAnimation]::new(0,1,[Windows.Duration]::new([timespan]::FromMilliseconds(220))))}})
-$ui.StatsBack.Add_Click({$ui.StatsPanel.Visibility='Collapsed';$ui.FullPanel.Visibility='Visible';$ui.HeaderActions.Visibility='Visible';$ui.StatsHeaderActions.Visibility='Collapsed';$ui.TopHeader.Margin='0,0,0,16';$ui.Compact.Visibility='Visible';if(-not $script:userResized -and $script:preStatsHeight){$window.Height=$script:preStatsHeight};Render-State})
+$ui.StatsButton.Add_Click({$script:preStatsHeight=$window.Height;$ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Collapsed';$ui.HeaderActions.Visibility='Collapsed';$ui.StatsHeaderActions.Visibility='Visible';$ui.TopHeader.Margin='0,0,0,18';$ui.StatsPanel.Visibility='Visible';if(-not $script:userResized){$window.Height=[math]::Min(750,(Get-WorkAreaDip).Height-24);$window.UpdateLayout();Keep-OnScreen};Render-Stats;if(-not $Preview){$ui.StatsPanel.BeginAnimation([Windows.UIElement]::OpacityProperty,[Windows.Media.Animation.DoubleAnimation]::new(0,1,[Windows.Duration]::new([timespan]::FromMilliseconds(220))))}})
+$ui.StatsBack.Add_Click({$ui.StatsPanel.Visibility='Collapsed';$ui.FullPanel.Visibility='Visible';$ui.HeaderActions.Visibility='Visible';$ui.StatsHeaderActions.Visibility='Collapsed';$ui.TopHeader.Margin='0,0,0,16';$ui.Compact.Visibility='Visible';if(-not $script:userResized -and $script:preStatsHeight){$window.Height=$script:preStatsHeight};Render-State;$window.UpdateLayout();Keep-OnScreen})
 $ui.StatsHours.Add_SizeChanged({param($sender,$eventArgs)if($ui.StatsPanel.Visibility -eq 'Visible' -and $eventArgs.WidthChanged){Render-Stats}})
 $window.Add_SizeChanged({Update-ContentScale})
 $ui.StatsRange7.Add_Click({$script:statsRange=7;Render-Stats})
@@ -477,45 +657,66 @@ $ui.ResizeGrip.Add_MouseLeftButtonDown({
  if($script:isCompact){return}
  $script:userResized=$true
  if($script:desktop){$script:desktop.BeginResize()}
+ Keep-OnScreen
 })
 $ui.Compact.Add_Click({
  if(-not $script:isCompact){
   $script:expandedSize=[pscustomobject]@{Width=$window.ActualWidth;Height=$window.ActualHeight}
   $script:isCompact=$true
   $ui.FullPanel.Visibility='Collapsed';$ui.MiniPanel.Visibility='Visible';$ui.ResizeGrip.Visibility='Collapsed'
-  $window.MinHeight=160;$window.MaxHeight=160;$window.Height=160;$ui.Compact.Content='+';$ui.Compact.ToolTip='展开看板'
+  $ui.MainScroll.Visibility='Collapsed';$ui.RootGlass.Padding='14,10';$window.MinWidth=280;$window.MinHeight=64;$window.MaxHeight=64;Resize-Anchored 320 64;$ui.Compact.Content='+';$ui.Compact.ToolTip='展开看板'
   Update-ContentScale
  }else{
   $script:isCompact=$false
-  $window.MaxHeight=860;$window.MinHeight=520
-  $window.Width=[math]::Max($window.MinWidth,[math]::Min($window.MaxWidth,[double]$script:expandedSize.Width))
-  $window.Height=[math]::Max($window.MinHeight,[math]::Min([math]::Min($window.MaxHeight,[Windows.SystemParameters]::WorkArea.Height-24),[double]$script:expandedSize.Height))
+  $ui.MainScroll.Visibility='Visible';$ui.RootGlass.Padding='16,14';$window.MinWidth=300;$window.MaxHeight=860;$window.MinHeight=520
+  $newWidth=[math]::Max($window.MinWidth,[math]::Min($window.MaxWidth,[double]$script:expandedSize.Width))
+  $newHeight=[math]::Max($window.MinHeight,[math]::Min([math]::Min($window.MaxHeight,(Get-WorkAreaDip).Height-24),[double]$script:expandedSize.Height))
+  Resize-Anchored $newWidth $newHeight
   $ui.FullPanel.Visibility='Visible';$ui.MiniPanel.Visibility='Collapsed';$ui.ResizeGrip.Visibility='Visible';$ui.Compact.Content='−';$ui.Compact.ToolTip='折叠为小窗'
   Update-ContentScale
+  Render-State
  }
 })
+$ui.MiniExpand.Add_Click({$ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))})
+$ui.MiniClose.Add_Click({$window.Close()})
+$ui.MiniDrag.Add_MouseLeftButtonDown({$window.DragMove();Keep-OnScreen})
+$ui.MainScroll.Add_ScrollChanged({param($sender,$e)if($e.ViewportWidthChange -ne 0){Update-ContentScale}})
 $ui.Play.Add_Click({Select-Game})
 $timer=[Windows.Threading.DispatcherTimer]::new(); $timer.Interval=[timespan]::FromSeconds(1)
 $timer.Add_Tick({
  try {
   $next=Read-Snapshot $script:rules
   $tick=$clock.Elapsed.TotalSeconds
-  Add-Interval $records $script:rules $script:last $next ($tick-$script:lastTick)
+  if(Add-Interval $records $script:rules $script:last $next ($tick-$script:lastTick)){$script:activityDirty=$true}
   Update-Session $next ($tick-$script:lastTick)
+  # Save at once when the desktop becomes unreadable (lock) or after a gap (sleep/resume).
+  $force=($script:last.Readable -and -not $next.Readable) -or ($tick-$script:lastTick -gt 5)
   $script:last=$next; $script:lastTick=$tick
-  if($tick-$script:lastSaved -ge 5){Save-Activity; $script:lastSaved=$tick}
-  $signature=$script:last.Front+'|'+$script:last.Readable+'|'+($records.Values | ForEach-Object { [math]::Floor($_.Foreground).ToString()+','+[math]::Floor($_.Running).ToString() })+'|'+$script:saveError
+  if($force){Save-Activity -Force}else{Save-Activity}
+  if($script:dailyBackupDate -ne [datetime]::Today){Save-DailyBackup;$script:dailyBackupDate=[datetime]::Today}
+  # 2.1: the UI shows minutes, so only re-render when a visible value can change.
+  $today=[datetime]::Today.ToString('yyyy-MM-dd');$fgToday=0.0;$runToday=0.0
+  foreach($row in $records.Values){if($row.Date -eq $today){$fgToday+=[double]$row.Foreground;$runToday+=[double]$row.Running}}
+  $activeKey='';foreach($r in $script:rules){if($script:last.Names.ContainsKey($r.Process)){$activeKey+=$r.Process+','}}
+  $signature=$today+'|'+$script:last.Front+'|'+$script:last.Readable+'|'+$activeKey+'|'+[math]::Floor($fgToday/60)+'|'+[math]::Floor($runToday/60)+'|'+$script:saveError+'|'+$script:runtimeWarning
   if($signature -ne $script:lastRenderSignature -and (-not $script:desktop -or -not $script:desktop.IsCovered())){Render-State;$script:lastRenderSignature=$signature}
   if($ProbeSeconds -gt 0 -and $tick -ge $ProbeSeconds){$window.Close()}
- } catch { $ui.Health.Text='采集错误：'+$_.Exception.Message; $script:last=Read-Snapshot $script:rules; $script:lastTick=$clock.Elapsed.TotalSeconds }
+ } catch {
+  # 2.1: the recovery path itself must never throw (2.0.3 re-ran Read-Snapshot unguarded here).
+  $script:runtimeWarning='采集错误（已自动继续）：'+$_.Exception.Message
+  Write-RuntimeLog $_
+  try{$script:last=Read-Snapshot $script:rules}catch{}
+  $script:lastTick=$clock.Elapsed.TotalSeconds
+ }
 })
+$script:dailyBackupDate=[datetime]::Today
 $script:tray=$null
 if(-not $Preview){
- $script:tray=[Windows.Forms.NotifyIcon]::new();$iconPath=Join-Path $PSScriptRoot 'Afterhours.ico';if(Test-Path -LiteralPath $iconPath){$script:trayIcon=[Drawing.Icon]::new($iconPath);$script:tray.Icon=$script:trayIcon}else{$script:tray.Icon=[Drawing.SystemIcons]::Application};$script:tray.Text='Afterhours 2.0.2 · 游戏时间';$script:tray.Visible=$true
+ $script:tray=[Windows.Forms.NotifyIcon]::new();$iconPath=Join-Path $PSScriptRoot 'Afterhours.ico';if(Test-Path -LiteralPath $iconPath){$script:trayIcon=[Drawing.Icon]::new($iconPath);$script:tray.Icon=$script:trayIcon}else{$script:tray.Icon=[Drawing.SystemIcons]::Application};$script:tray.Text='Afterhours 2.1 · 游戏时间';$script:tray.Visible=$true
  $trayMenu=[Windows.Forms.ContextMenuStrip]::new();[void]$trayMenu.Items.Add('退出 Afterhours')
  $trayMenu.Items[0].Add_Click({$window.Close()});$script:tray.ContextMenuStrip=$trayMenu
 }
-$window.Add_Closed({$timer.Stop();if($script:currentSession){$script:currentSession.End=[datetime]::Now.ToString('o')};Save-Activity;if($script:tray){$script:tray.Visible=$false;$script:tray.Dispose()};if($script:trayIcon){$script:trayIcon.Dispose()}})
+$window.Add_Closed({$timer.Stop();Save-Activity -Force;if($script:tray){$script:tray.Visible=$false;$script:tray.Dispose()};if($script:trayIcon){$script:trayIcon.Dispose()}})
 Apply-Theme
 Render-State
 if($Preview){
@@ -568,7 +769,7 @@ if($Preview){
   if($script:month -ne $previous){throw 'Forward paging failed'}
   $savedTheme=$preferences.Theme;$savedDark=$preferences.Dark
   $settings=New-SettingsMenu
-  if($settings.Items.Count -ne 8){throw 'Settings menu item count failed'}
+  if($settings.Items.Count -ne 9){throw 'Settings menu item count failed'}
   $settings.Items[2].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.MenuItem]::ClickEvent))
   if($preferences.Theme -ne '烟粉'){throw 'Theme selection failed'}
   $preferences.Dark=$false;$settings=New-SettingsMenu;$settings.Items[4].RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.MenuItem]::ClickEvent))
@@ -597,7 +798,7 @@ if($Preview){
   if($window.ResizeMode -ne [Windows.ResizeMode]::CanResize){throw 'Window resize mode failed'}
   $script:userResized=$true;$window.Width=420;$window.Height=640;$window.UpdateLayout()
   $ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));$window.UpdateLayout()
-  if(-not $script:isCompact -or [math]::Abs($window.ActualHeight-160) -gt 1 -or $ui.MiniPanel.Visibility -ne 'Visible' -or $ui.ResizeGrip.Visibility -ne 'Collapsed'){throw 'Compact mode failed'}
+  if(-not $script:isCompact -or [math]::Abs($window.ActualHeight-64) -gt 1 -or $ui.MiniPanel.Visibility -ne 'Visible' -or $ui.ResizeGrip.Visibility -ne 'Collapsed'){throw 'Compact mode failed'}
   Save-Shot 'mini'
   $ui.Compact.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));$window.UpdateLayout()
   if($script:isCompact -or [math]::Abs($window.ActualWidth-420) -gt 1 -or [math]::Abs($window.ActualHeight-640) -gt 1 -or $ui.ResizeGrip.Visibility -ne 'Visible'){throw 'Expanded size restore failed'}
@@ -613,6 +814,13 @@ if($Preview){
   $narrowScale=[Windows.Media.ScaleTransform]$ui.MainContent.LayoutTransform
   if([math]::Abs($window.ActualWidth-300) -gt 1 -or [math]::Abs($narrowScale.ScaleX-(300.0/370.0)) -gt 0.01 -or [math]::Abs($narrowScale.ScaleX-$narrowScale.ScaleY) -gt 0.001){throw 'Proportional narrow scaling failed'}
   Save-Shot 'scaled-narrow'
+  $ui.StatsButton.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent));$window.Height=520;$window.UpdateLayout();Update-ContentScale;$window.UpdateLayout()
+  if($ui.MainContent.ActualWidth*$ui.MainContent.LayoutTransform.ScaleX -gt $ui.MainScroll.ViewportWidth+2){throw 'Stats content overlaps scrollbar'}
+  Save-Shot 'stats-narrow'
+  $ui.MainScroll.ScrollToEnd();$window.UpdateLayout()
+  if($ui.MainScroll.ScrollableHeight -gt 0 -and $ui.MainScroll.VerticalOffset -le 0){throw 'Stats scrolling failed'}
+  Save-Shot 'stats-narrow-bottom'
+  $ui.MainScroll.ScrollToHome();$ui.StatsBack.RaiseEvent([Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent))
   $preferences.Theme=$savedTheme;$preferences.Dark=$savedDark;Apply-Theme;Render-State
   Write-Output ('SHOTS_OK '+$Screenshots)
  }

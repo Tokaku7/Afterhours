@@ -25,6 +25,10 @@ public sealed class DesktopLayer {
  readonly HwndSource source;
  readonly IntPtr handle;
  public bool BlurEnabled {get; private set;}
+ // 2.1: raised for WM_QUERYENDSESSION, WM_ENDSESSION and PBT_APMSUSPEND so the
+ // script can save before logoff, shutdown or sleep (checked here in C# to avoid
+ // invoking PowerShell for every window message).
+ public event EventHandler SaveRequested;
  public DesktopLayer(Window window) {
   handle = new WindowInteropHelper(window).Handle;
   source = HwndSource.FromHwnd(handle);
@@ -63,6 +67,7 @@ public sealed class DesktopLayer {
   // templates already draw their own translucent glass, so keep HWND clear.
  }
  IntPtr Hook(IntPtr hwnd, int msg, IntPtr w, IntPtr l, ref bool handled) {
+  if (msg == 0x11 || msg == 0x16 || (msg == 0x218 && w.ToInt64() == 4)) { EventHandler h = SaveRequested; if (h != null) h(this, EventArgs.Empty); }
   if (msg == 0x21) { handled=true; return new IntPtr(3); }
   if (msg == 0x0005) ApplyRoundedRegion();
   if (msg == 0x46 && l != IntPtr.Zero) {
