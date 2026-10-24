@@ -1,8 +1,12 @@
-﻿# Afterhours 2.1
+﻿# Afterhours 2.1.1
 
-**仓库：Tokaku7/Afterhours · [下载最新版 Afterhours-2.1.zip](https://github.com/Tokaku7/Afterhours/releases/latest)**
+**仓库：Tokaku7/Afterhours · [下载最新版 Afterhours-2.1.1.zip](https://github.com/Tokaku7/Afterhours/releases/latest)**
 
-请在 Release 的 **Assets** 中下载 `Afterhours-2.1.zip`，完整解压后双击 **`Afterhours启动.vbs`**。下方的 `Source code` 为 GitHub 自动生成的源码压缩包。
+请在 Release 的 **Assets** 中下载 `Afterhours-2.1.1.zip`，完整解压后双击 **`Afterhours启动.vbs`**。下方的 `Source code` 为 GitHub 自动生成的源码压缩包。
+
+## 2.1.1 修复
+
+修复迁移后无法启动的错误，兼容读取受影响的历史记录。报错用户请重新下载；先退出并备份 data，再用新版「程序文件」替换旧版同名文件夹，保留原 data，无需重新迁移。
 
 ## 界面与功能预览
 

@@ -182,7 +182,17 @@ function Merge-Sessions($Items, [double]$GapSeconds=120) {
  # 2.1: join consecutive sessions of the same game separated by <= GapSeconds.
  # Seconds stays the sum of counted foreground time; Start/End span the whole block.
  $result = [Collections.ArrayList]::new()
- $sorted = @($Items | Where-Object { $_ -and $_.Start -and $_.End } | Sort-Object { try { [datetime]$_.Start } catch { [datetime]::MinValue } })
+ # Recover the nested collections written by the old migration reload loop.
+ # Expand collections only: malformed scalar fields must still fail validation.
+ $flat=[Collections.ArrayList]::new()
+ $pending=[Collections.Queue]::new();$pending.Enqueue($Items)
+ while($pending.Count){
+  $entry=$pending.Dequeue()
+  if($null -eq $entry){continue}
+  if($entry -is [Collections.IList]){foreach($child in $entry){$pending.Enqueue($child)}}
+  else{[void]$flat.Add($entry)}
+ }
+ $sorted = @($flat | Where-Object { $_ -and $_.Start -and $_.End } | Sort-Object { try { [datetime]$_.Start } catch { [datetime]::MinValue } })
  foreach ($item in $sorted) {
   $last = if ($result.Count) { $result[$result.Count-1] } else { $null }
   $gap = if ($last) { try { ([datetime]$item.Start - [datetime]$last.End).TotalSeconds } catch { [double]::MaxValue } } else { [double]::MaxValue }

@@ -597,7 +597,7 @@ function Show-Migration {
   if([Windows.MessageBox]::Show($window,$message,'迁移旧版数据','YesNo','Question') -ne 'Yes'){return}
   $backup=Invoke-MigrationPlan $plan -PreferSource
   $records.Clear();foreach($r in @(Read-MigrationRows $DataDirectory 'activity.json')){$records["$($r.Date)|$($r.Process)"]=$r}
-  $sessions.Clear();foreach($r in @(Merge-Sessions @(Read-MigrationRows $DataDirectory 'sessions.json') 120)){[void]$sessions.Add($r)};$script:currentSession=$null
+  $mergedSessions=Merge-Sessions @(Read-MigrationRows $DataDirectory 'sessions.json') 120;$sessions.Clear();foreach($r in $mergedSessions){[void]$sessions.Add($r)};$script:currentSession=$null
   # Migration rewrote all three files with validated data, so saving is safe again.
   $script:blockSave=@{games=$false;activity=$false;sessions=$false};$script:dataNotes.Clear();$script:activityDirty=$false;$script:sessionsDirty=$true
   $script:manualRules=@(Read-MigrationRows $DataDirectory 'games.json'|Where-Object{$_.Process -notlike 'steam-*' -and $_.Process -notin $builtInRules.Process});$script:rules=@($builtInRules)+@($script:manualRules)+@($steamRules)
@@ -712,7 +712,7 @@ $timer.Add_Tick({
 $script:dailyBackupDate=[datetime]::Today
 $script:tray=$null
 if(-not $Preview){
- $script:tray=[Windows.Forms.NotifyIcon]::new();$iconPath=Join-Path $PSScriptRoot 'Afterhours.ico';if(Test-Path -LiteralPath $iconPath){$script:trayIcon=[Drawing.Icon]::new($iconPath);$script:tray.Icon=$script:trayIcon}else{$script:tray.Icon=[Drawing.SystemIcons]::Application};$script:tray.Text='Afterhours 2.1 · 游戏时间';$script:tray.Visible=$true
+ $script:tray=[Windows.Forms.NotifyIcon]::new();$iconPath=Join-Path $PSScriptRoot 'Afterhours.ico';if(Test-Path -LiteralPath $iconPath){$script:trayIcon=[Drawing.Icon]::new($iconPath);$script:tray.Icon=$script:trayIcon}else{$script:tray.Icon=[Drawing.SystemIcons]::Application};$script:tray.Text='Afterhours 2.1.1 · 游戏时间';$script:tray.Visible=$true
  $trayMenu=[Windows.Forms.ContextMenuStrip]::new();[void]$trayMenu.Items.Add('退出 Afterhours')
  $trayMenu.Items[0].Add_Click({$window.Close()});$script:tray.ContextMenuStrip=$trayMenu
 }
